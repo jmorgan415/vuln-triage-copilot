@@ -17,6 +17,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Component display rules (e.g. #board grid) otherwise beat the hidden attribute. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -62,6 +64,39 @@ body {
 .metric.act .value { color: var(--act); }
 .metric.mon .value { color: var(--mon); }
 .metric.dis .value { color: var(--dis); }
+
+/* ---------- fix verification ---------- */
+.verify-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 0 24px 14px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--muted);
+}
+.verify-strip.ok { border-color: #22c55e; }
+.verify-strip.bad { border-color: var(--act); }
+.verify-strip .gate { font-weight: 700; color: #22c55e; }
+.verify-strip.bad .gate { color: var(--act); }
+.verify-strip b { color: var(--text); font-family: var(--mono); }
+.verify-strip code { font-family: var(--mono); color: var(--text); }
+.verify-strip .vreason { color: var(--act); flex-basis: 100%; }
+.fix-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid currentColor;
+}
+.fix-badge.ok { color: #22c55e; }
+.fix-badge.warn { color: var(--mon); }
+.fix-badge.bad { color: var(--act); }
 
 /* ---------- switcher ---------- */
 .switcher { display: flex; align-items: center; gap: 14px; padding: 0 24px 14px; }

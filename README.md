@@ -83,6 +83,13 @@ Headline numbers (all computed by the pipeline, not hand-waved):
 
 - 56 findings → 5 act-now cards worth a human's attention
 - 4 remediation PRs close 36 findings (3 bumps + 1 pin deletion)
+- Every fix is verified before a human reviews it (`make verify`, and the
+  `Verify Fixes` workflow on every fix PR): the pinned requirements install
+  into a fresh venv on the service's Python (3.11), each changed package's
+  tests run on their own (13/13 pass), and a Trivy rescan must show the
+  act-now findings gone with nothing new introduced (56 → 20, 0 new). The
+  gate was checked against a deliberately regressed sqlparse pin and failed
+  as intended. The dashboard shows the result on every affected card.
 - 20 findings need no code change, each with a documented reason and
   a revisit trigger ("revisit the day an egress proxy is adopted")
 - Priya's Monday for this service: **5.6 h → ~32 min** (assumption is a

@@ -120,7 +120,16 @@ change, and each carries its reason. Priya's Monday on this service:
 
 ## Beat 5 — Why this output is trustworthy (4 min)
 
-Run `make validate`.
+Run `make validate`, then point at the green "Fix PR verified" strip
+(or run `make verify` live, about a minute).
+
+"And the fixes are checked, not just the verdicts. Before anyone reviews
+the fix PR, the pinned dependencies install into a clean environment on
+this service's Python, each fix's tests run on their own, and a rescan
+has to show the act-now findings gone with nothing new introduced. The
+same check runs in CI on every fix PR. It already earned its keep: the
+clean install showed the old urllib3 pin can't even import on Python
+3.14, which is why the service's Python version is now pinned."
 
 "Every evidence quote in every card is checked against the actual file,
 line for line — the pipeline refuses to ship a verdict that doesn't cite

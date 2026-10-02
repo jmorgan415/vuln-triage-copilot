@@ -1,0 +1,336 @@
+{
+  "meta": {
+    "ref": "fix/reach-act-now-remediation",
+    "base": "main",
+    "commit": "3f5bc78",
+    "python": "3.11.14",
+    "generated_at": "2026-10-02T21:36:25+00:00"
+  },
+  "gate": {
+    "passed": true,
+    "reasons": []
+  },
+  "tests": {
+    "ran": 13,
+    "passed": 13,
+    "skipped": 0,
+    "modules": {
+      "test_config_service.py": {
+        "ran": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failed_tests": [],
+        "log_tail": "test_console_merge_tags_still_resolve (test_config_service.LoadTenantConfigTest.test_console_merge_tags_still_resolve) ... ok\ntest_python_constructor_tags_are_rejected (test_config_service.LoadTenantConfigTest.test_python_constructor_tags_are_rejected) ... ok\ntest_size_cap_enforced (test_config_service.LoadTenantConfigTest.test_size_cap_enforced) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.002s\n\nOK\n",
+        "passed": 3,
+        "ok": true
+      },
+      "test_image_thumbs.py": {
+        "ran": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failed_tests": [],
+        "log_tail": "test_aspect_ratio_preserved (test_image_thumbs.MakeThumbnailTest.test_aspect_ratio_preserved) ... ok\ntest_garbage_bytes_rejected (test_image_thumbs.MakeThumbnailTest.test_garbage_bytes_rejected) ... ok\ntest_jpeg_upload (test_image_thumbs.MakeThumbnailTest.test_jpeg_upload) ... ok\ntest_png_upload (test_image_thumbs.MakeThumbnailTest.test_png_upload) ... ok\ntest_webp_upload (test_image_thumbs.MakeThumbnailTest.test_webp_upload) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.811s\n\nOK\n",
+        "passed": 5,
+        "ok": true
+      },
+      "test_imports.py": {
+        "ran": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failed_tests": [],
+        "log_tail": "test_every_app_module_imports_without_removed_packages (test_imports.AppImportsTest.test_every_app_module_imports_without_removed_packages) ... ok\ntest_worker_handles_offline_job_kinds (test_imports.AppImportsTest.test_worker_handles_offline_job_kinds) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.387s\n\nOK\n",
+        "passed": 2,
+        "ok": true
+      },
+      "test_query_log.py": {
+        "ran": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failed_tests": [],
+        "log_tail": "test_deeply_nested_input_fails_cleanly (test_query_log.NormalizeQueryTest.test_deeply_nested_input_fails_cleanly) ... ok\ntest_keywords_uppercased_and_comments_stripped (test_query_log.NormalizeQueryTest.test_keywords_uppercased_and_comments_stripped) ... ok\ntest_support_console_snippet_is_normalized (test_query_log.NormalizeQueryTest.test_support_console_snippet_is_normalized) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.072s\n\nOK\n",
+        "passed": 3,
+        "ok": true
+      }
+    }
+  },
+  "rescan": {
+    "before": 56,
+    "after": 20,
+    "resolved": 36,
+    "introduced": [],
+    "act_now_remaining": []
+  },
+  "fixes": [
+    {
+      "package": "Jinja2",
+      "from": "2.11.2",
+      "to": null,
+      "change": "removed",
+      "app_modules": [],
+      "tests": [
+        "test_imports.py"
+      ],
+      "tests_passed": 2,
+      "tests_ran": 2,
+      "findings_closed": [
+        "CVE-2020-28493:Jinja2",
+        "CVE-2024-22195:Jinja2",
+        "CVE-2024-34064:Jinja2",
+        "CVE-2024-56326:Jinja2",
+        "CVE-2025-27516:Jinja2"
+      ],
+      "findings_open": [],
+      "status": "verified"
+    },
+    {
+      "package": "MarkupSafe",
+      "from": "1.1.1",
+      "to": null,
+      "change": "removed",
+      "app_modules": [],
+      "tests": [
+        "test_imports.py"
+      ],
+      "tests_passed": 2,
+      "tests_ran": 2,
+      "findings_closed": [],
+      "findings_open": [],
+      "status": "verified"
+    },
+    {
+      "package": "Pillow",
+      "from": "9.0.0",
+      "to": "12.3.0",
+      "change": "upgraded",
+      "app_modules": [
+        "image_thumbs"
+      ],
+      "tests": [
+        "test_image_thumbs.py"
+      ],
+      "tests_passed": 5,
+      "tests_ran": 5,
+      "findings_closed": [
+        "CVE-2022-22817:Pillow",
+        "CVE-2022-24303:Pillow",
+        "CVE-2022-45198:Pillow",
+        "CVE-2023-44271:Pillow",
+        "CVE-2023-4863:Pillow",
+        "CVE-2023-50447:Pillow",
+        "CVE-2024-28219:Pillow",
+        "CVE-2026-42308:Pillow",
+        "CVE-2026-42310:Pillow",
+        "CVE-2026-54058:Pillow",
+        "CVE-2026-54059:Pillow",
+        "CVE-2026-54060:Pillow",
+        "CVE-2026-55379:Pillow",
+        "CVE-2026-55380:Pillow",
+        "CVE-2026-55798:Pillow",
+        "CVE-2026-59197:Pillow",
+        "CVE-2026-59198:Pillow",
+        "CVE-2026-59199:Pillow",
+        "CVE-2026-59200:Pillow",
+        "CVE-2026-59204:Pillow",
+        "CVE-2026-59205:Pillow"
+      ],
+      "findings_open": [],
+      "status": "verified"
+    },
+    {
+      "package": "PyYAML",
+      "from": "5.3.1",
+      "to": "6.0.3",
+      "change": "upgraded",
+      "app_modules": [
+        "config_service"
+      ],
+      "tests": [
+        "test_config_service.py"
+      ],
+      "tests_passed": 3,
+      "tests_ran": 3,
+      "findings_closed": [
+        "CVE-2020-14343:PyYAML"
+      ],
+      "findings_open": [],
+      "status": "verified"
+    },
+    {
+      "package": "sqlparse",
+      "from": "0.4.1",
+      "to": "0.6.0",
+      "change": "upgraded",
+      "app_modules": [
+        "query_log"
+      ],
+      "tests": [
+        "test_query_log.py"
+      ],
+      "tests_passed": 3,
+      "tests_ran": 3,
+      "findings_closed": [
+        "CVE-2021-32839:sqlparse",
+        "CVE-2023-30608:sqlparse",
+        "CVE-2024-4340:sqlparse",
+        "CVE-2026-54284:sqlparse",
+        "CVE-2026-59893:sqlparse",
+        "CVE-2026-59894:sqlparse",
+        "CVE-2026-71491:sqlparse",
+        "CVE-2026-84305:sqlparse",
+        "GHSA-27jp-wm6q-gp25:sqlparse"
+      ],
+      "findings_open": [],
+      "status": "verified"
+    }
+  ],
+  "findings": {
+    "CVE-2020-28493:Jinja2": {
+      "package": "Jinja2",
+      "status": "verified"
+    },
+    "CVE-2024-22195:Jinja2": {
+      "package": "Jinja2",
+      "status": "verified"
+    },
+    "CVE-2024-34064:Jinja2": {
+      "package": "Jinja2",
+      "status": "verified"
+    },
+    "CVE-2024-56326:Jinja2": {
+      "package": "Jinja2",
+      "status": "verified"
+    },
+    "CVE-2025-27516:Jinja2": {
+      "package": "Jinja2",
+      "status": "verified"
+    },
+    "CVE-2022-22817:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2022-24303:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2022-45198:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2023-44271:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2023-4863:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2023-50447:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2024-28219:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-42308:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-42310:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-54058:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-54059:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-54060:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-55379:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-55380:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-55798:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59197:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59198:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59199:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59200:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59204:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2026-59205:Pillow": {
+      "package": "Pillow",
+      "status": "verified"
+    },
+    "CVE-2020-14343:PyYAML": {
+      "package": "PyYAML",
+      "status": "verified"
+    },
+    "CVE-2021-32839:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2023-30608:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2024-4340:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2026-54284:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2026-59893:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2026-59894:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2026-71491:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "CVE-2026-84305:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    },
+    "GHSA-27jp-wm6q-gp25:sqlparse": {
+      "package": "sqlparse",
+      "status": "verified"
+    }
+  }
+}

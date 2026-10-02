@@ -1,0 +1,29 @@
+# CI Steward policy. Always read from the default branch, so a PR cannot
+# grant itself auto-fix or unprotect paths.
+
+instructions: >
+  The failing check is Verify Fixes, which installs the PR's pinned
+  dependencies, runs sample-app/tests, and rescans with Trivy. Fix the
+  application code under sample-app/app so it works with the upgraded
+  dependency versions. Never downgrade or unpin a dependency, and never
+  weaken, skip, or delete a test: the upgrade is the security fix, and the
+  tests are the proof that it is safe.
+
+retry:
+  mode: "off"
+
+fix:
+  enabled: true
+  max_attempts: 2
+  # The job is named "verify", which is not a built-in category.
+  scope: [tests, verify]
+  protected_paths:
+    - ".github/**"
+    - "scripts/**"
+    - "triage/**"
+    - "data/**"
+    - "sample-app/requirements.txt"
+    - "sample-app/.python-version"
+    - "sample-app/tests/**"
+
+max_runs_per_pr: 6
