@@ -1,7 +1,15 @@
 // Reach — vulnerability triage copilot dashboard.
-// Data contract: data/triage_results.json written by triage/run_triage.py.
+// Data contract: data/triage_results.json written by triage/run_triage.py,
+// plus optional data/fix_verification.json written by scripts/verify_fixes.py.
 
-const state = { data: null, noiseView: false, collapsed: {} };
+const state = { data: null, verify: null, noiseView: false, collapsed: {} };
+
+const FIX_STATUS = {
+  verified: { label: "fix verified", cls: "ok" },
+  untested: { label: "fix untested", cls: "warn" },
+  tests_failed: { label: "fix tests failed", cls: "bad" },
+  not_resolved: { label: "fix not resolved", cls: "bad" },
+};
 
 const SEV_CLS = {
   CRITICAL: "crit",
@@ -31,7 +39,14 @@ function fmtMinutes(min) {
 async function boot() {
   const res = await fetch("../data/triage_results.json");
   state.data = await res.json();
+  try {
+    const vres = await fetch("../data/fix_verification.json");
+    if (vres.ok) state.verify = await vres.json();
+  } catch (_) {
+    state.verify = null;
+  }
   renderMetrics();
+  renderVerify();
   renderBoard();
   renderNoise();
   renderMeta();
@@ -72,6 +87,61 @@ function renderMetrics() {
   }
 }
 
+function fixFor(f) {
+  return state.verify?.findings?.[`${f.id}:${f.package}`] || null;
+}
+
+function fixByPackage(pkg) {
+  return (state.verify?.fixes || []).find((x) => x.package === pkg) || null;
+}
+
+function fixBadge(f) {
+  const fx = fixFor(f);
+  if (!fx) return "";
+  const s = FIX_STATUS[fx.status] || { label: fx.status, cls: "warn" };
+  return `<span class="fix-badge ${s.cls}">${esc(s.label)}</span>`;
+}
+
+function renderVerify() {
+  const v = state.verify;
+  const el = document.getElementById("verify-strip");
+  if (!v) return;
+  const { gate, tests, rescan, meta } = v;
+  const verified = v.fixes.filter((x) => x.status === "verified").length;
+  el.hidden = false;
+  el.className = `verify-strip ${gate.passed ? "ok" : "bad"}`;
+  el.innerHTML = `
+    <span class="gate">${gate.passed ? "✓ Fix PR verified" : "✗ Fix PR blocked"}</span>
+    <span class="vitem">${esc(meta.ref)} @ <code>${esc(meta.commit)}</code></span>
+    <span class="vitem">tests <b>${tests.passed}/${tests.ran}</b> on Python ${esc(meta.python)}</span>
+    <span class="vitem">${verified}/${v.fixes.length} fixes verified</span>
+    <span class="vitem">rescan <b>${rescan.before} → ${rescan.after}</b> findings</span>
+    <span class="vitem">${rescan.introduced.length} introduced</span>
+    ${gate.reasons.map((r) => `<span class="vreason">${esc(r)}</span>`).join("")}
+  `;
+}
+
+function verifyHtml(f) {
+  const fx = fixFor(f);
+  if (!fx) return "";
+  const fix = fixByPackage(fx.package);
+  if (!fix) return "";
+  const s = FIX_STATUS[fix.status] || { label: fix.status, cls: "warn" };
+  const key = `${f.id}:${f.package}`;
+  const closed = fix.findings_closed.includes(key);
+  const change = fix.to ? `${fix.from} → ${fix.to}` : `${fix.from} → removed`;
+  return `
+    <h4>Fix verification</h4>
+    <div class="kv">
+      <span class="k">Status</span><span><span class="fix-badge ${s.cls}">${esc(s.label)}</span></span>
+      <span class="k">Change</span><span>${esc(fix.package)} ${esc(change)}</span>
+      <span class="k">Tests</span><span>${fix.tests_passed}/${fix.tests_ran} passed (${esc(fix.tests.join(", ") || "none")})</span>
+      <span class="k">Rescan</span><span>${closed ? "finding no longer reported" : "finding still reported"}</span>
+      <span class="k">Verified on</span><span>${esc(state.verify.meta.ref)} @ ${esc(state.verify.meta.commit)}, Python ${esc(state.verify.meta.python)}</span>
+    </div>
+  `;
+}
+
 function cardHtml(f) {
   const sev = SEV_CLS[f.severity] || "unk";
   return `
@@ -82,7 +152,7 @@ function cardHtml(f) {
       </div>
       <div class="pkg">${esc(f.package)} ${esc(f.installed)} → ${esc(f.fixed || "?")}</div>
       <div class="oneline">${esc(f.one_line)}</div>
-      <div class="conf">confidence: ${esc(f.confidence)}</div>
+      <div class="conf">confidence: ${esc(f.confidence)} ${fixBadge(f)}</div>
     </article>
   `;
 }
@@ -188,6 +258,7 @@ function openDrawer(f) {
     <p>${esc(f.recommended_action)}</p>
     <h4>Patch hint</h4>
     ${patchHtml(f.patch_hint)}
+    ${verifyHtml(f)}
     <h4>Advisory</h4>
     <p><a href="${esc(f.primary_url)}" target="_blank" rel="noopener">${esc(f.primary_url || f.id)}</a></p>
   `;

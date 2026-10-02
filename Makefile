@@ -1,7 +1,7 @@
 # Reach — vulnerability triage copilot demo harness
 # Persona: security engineer at Northgate Financial
 
-.PHONY: scan triage triage-live serve validate demo
+.PHONY: scan triage triage-live serve validate verify demo
 
 # Produce raw scanner output from the sample app's pinned deps.
 scan:
@@ -22,6 +22,11 @@ serve:
 # Self-check: evidence citations point at real code.
 validate:
 	python3 scripts/validate.py
+
+# Prove the fix branch is safe: clean pinned install, per-fix tests,
+# Trivy rescan. Writes data/fix_verification.json for the dashboard.
+verify:
+	python3 scripts/verify_fixes.py
 
 demo: triage
 	@echo "Run 'make serve' in another terminal, then open http://localhost:8765/dashboard/"

@@ -1,0 +1,81 @@
+name: Verify Fixes
+
+# Every remediation PR must prove it is safe before review: pinned deps
+# install cleanly, each fix's tests pass, and a rescan shows act-now
+# findings closed with nothing new introduced.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "sample-app/**"
+      - "scripts/verify_fixes.py"
+      - ".github/workflows/verify-fixes.yml"
+
+permissions:
+  contents: read
+
+env:
+  TRIVY_VERSION: "0.75.0"
+  TRIVY_SHA256: "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up the service's pinned Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: sample-app/.python-version
+
+      - name: Install Trivy (pinned, checksum-verified)
+        run: |
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfL -o "$tarball" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${tarball}"
+          echo "${TRIVY_SHA256}  ${tarball}" | sha256sum --check
+          tar -xzf "$tarball" trivy
+          sudo mv trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: Verify fixes
+        run: |
+          python scripts/verify_fixes.py \
+            --ref HEAD \
+            --base "origin/${{ github.base_ref }}" \
+            --python "$(command -v python)" \
+            --out verification.json
+
+      - name: Summarize
+        if: always()
+        run: |
+          [ -f verification.json ] || { echo "No verification report produced." >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          v = json.load(open("verification.json"))
+          g, t, r = v["gate"], v["tests"], v["rescan"]
+          print(f"## Fix verification: {'PASSED' if g['passed'] else 'FAILED'}")
+          print(f"Python {v['meta']['python']} · tests {t['passed']}/{t['ran']} passed · "
+                f"findings {r['before']} -> {r['after']} · {len(r['introduced'])} introduced\n")
+          print("| Package | Change | Tests | Findings closed | Status |")
+          print("|---|---|---|---|---|")
+          for f in v["fixes"]:
+              change = f"{f['from'] or '-'} -> {f['to'] or 'removed'}"
+              print(f"| {f['package']} | {change} | {f['tests_passed']}/{f['tests_ran']} | "
+                    f"{len(f['findings_closed'])} | {f['status']} |")
+          for reason in g["reasons"]:
+              print(f"\n- {reason}")
+          EOF
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fix-verification
+          path: verification.json
+          if-no-files-found: ignore
