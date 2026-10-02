@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "product": "Reach",
+    "customer": "Northgate Financial",
+    "target": "sample-app \u2014 northgate platform-worker",
+    "scanner": "trivy",
+    "backend": "droid",
+    "generated_at": "2026-10-02T02:06:20+00:00",
+    "assumptions": {
+      "manual_minutes_per_finding": 6,
+      "note": "manual baseline: read advisory, grep codebase, decide, write up"
+    },
+    "summary": {
+      "act_now": 0,
+      "monitor": 0,
+      "dismiss": 1,
+      "untriaged": 0
+    },
+    "manual_minutes_baseline": 6,
+    "review_minutes_estimate": 0
+  },
+  "findings": [
+    {
+      "id": "CVE-2020-14343",
+      "package": "PyYAML",
+      "installed": "5.3.1",
+      "fixed": "5.4",
+      "severity": "CRITICAL",
+      "title": "PyYAML: incomplete fix for CVE-2020-1747",
+      "description": "A vulnerability was discovered in the PyYAML library in versions before 5.4, where it is susceptible to arbitrary code execution when it processes untrusted YAML files through the full_load method or with the FullLoader loader. Applications that use the library to process untrusted input may be vulnerable to this flaw. This flaw allows an attacker to execute arbitrary code on the system by abusing the python/object/new constructor. This flaw is due to an incomplete fix for CVE-2020-1747.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2020-14343",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "The worker uses FullLoader, but its job handler serializes input as JSON before YAML parsing, preventing attacker-supplied YAML tags from reaching it.",
+      "reasoning": "PyYAML 5.3.1 is pinned, and the tenant-config loader uses the affected FullLoader. However, the only call site in this repository passes json.dumps(job[\"payload\"]) to that loader. Attacker-supplied tag text is therefore encoded as JSON string content, not parsed as a YAML constructor tag; no direct raw-YAML call path appears in this codebase.",
+      "vulnerable_path": "not reachable",
+      "attack_surface": "No exploitable job-spool input through the call path shown.",
+      "evidence": [
+        {
+          "file": "requirements.txt",
+          "line_start": 7,
+          "line_end": 7,
+          "quote": "PyYAML==5.3.1"
+        },
+        {
+          "file": "app/main.py",
+          "line_start": 17,
+          "line_end": 21,
+          "quote": "def handle_job(job: dict) -> dict:\n    kind = job.get(\"kind\", \"\")\n    if kind == \"tenant_config\":\n        payload = json.dumps(job[\"payload\"]).encode()\n        return {\"ok\": bool(config_service.load_tenant_config(payload))}"
+        },
+        {
+          "file": "app/main.py",
+          "line_start": 38,
+          "line_end": 40,
+          "quote": "    for path in jobs:\n        job = json.loads(path.read_text())\n        print(f\"[worker] {path.name} -> {handle_job(job)}\")"
+        },
+        {
+          "file": "app/config_service.py",
+          "line_start": 12,
+          "line_end": 18,
+          "quote": "def load_tenant_config(raw: bytes) -> dict:\n    \"\"\"Parse a YAML config bundle uploaded via the admin console.\"\"\"\n    if len(raw) > MAX_CONFIG_BYTES:\n        raise ValueError(\"config bundle exceeds 256 KiB limit\")\n    # FullLoader keeps support for the custom !!merge tags the console emits\n    # (safe_load rejects them). Added 2021-06, see TKT-1421.\n    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)"
+        }
+      ],
+      "recommended_action": "Dismiss this finding for the current job path. If a direct YAML-upload path is added, reassess before passing its bytes to FullLoader; update the stale dependency during routine maintenance.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "droid"
+    }
+  ]
+}

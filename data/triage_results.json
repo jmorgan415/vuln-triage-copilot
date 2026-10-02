@@ -1,0 +1,1654 @@
+{
+  "meta": {
+    "product": "Reach",
+    "customer": "Northgate Financial",
+    "target": "sample-app \u2014 northgate platform-worker",
+    "scanner": "trivy",
+    "backend": "cached",
+    "generated_at": "2026-10-02T02:08:24+00:00",
+    "assumptions": {
+      "manual_minutes_per_finding": 6,
+      "note": "manual baseline: read advisory, grep codebase, decide, write up"
+    },
+    "summary": {
+      "act_now": 5,
+      "monitor": 6,
+      "dismiss": 45,
+      "untriaged": 0
+    },
+    "manual_minutes_baseline": 336,
+    "review_minutes_estimate": 32
+  },
+  "findings": [
+    {
+      "id": "CVE-2020-14343",
+      "package": "PyYAML",
+      "installed": "5.3.1",
+      "fixed": "5.4",
+      "severity": "CRITICAL",
+      "title": "PyYAML: incomplete fix for CVE-2020-1747",
+      "description": "A vulnerability was discovered in the PyYAML library in versions before 5.4, where it is susceptible to arbitrary code execution when it processes untrusted YAML files through the full_load method or with the FullLoader loader. Applications that use the library to process untrusted input may be vulnerable to this flaw. This flaw allows an attacker to execute arbitrary code on the system by abusing the python/object/new constructor. This flaw is due to an incomplete fix for CVE-2020-1747.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2020-14343",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "FullLoader RCE directly reachable from admin-uploaded tenant configs.",
+      "reasoning": "The queue envelope for the tenant_config job carries the admin console's uploaded config bundle unmodified (base64 for transport); handle_job() passes the decoded bytes straight into load_tenant_config(), which parses them with yaml.load(..., Loader=yaml.FullLoader) at config_service.py:18. CVE-2020-14343 is precisely a bypass of FullLoader's type restrictions via python/object/apply-style tags, giving arbitrary code execution in the worker. The 256 KiB size cap does not constrain tag payloads, and the in-code comment shows FullLoader was adopted for !!merge tag support (TKT-1421), not object constructors, so the dangerous surface is incidental.",
+      "vulnerable_path": "handle_job('tenant_config') -> base64.b64decode(job['config_b64']) -> load_tenant_config() -> yaml.load(bytes, Loader=FullLoader)",
+      "attack_surface": "Any workspace admin (or compromised admin session) uploading a tenant config bundle; executes in the platform worker.",
+      "evidence": [
+        {
+          "file": "sample-app/app/main.py",
+          "line_start": 18,
+          "line_end": 24,
+          "quote": "def handle_job(job: dict) -> dict:\n    kind = job.get(\"kind\", \"\")\n    if kind == \"tenant_config\":\n        # Queue envelope for the admin-console upload: the config bundle\n        # exactly as the console accepted it, base64-encoded for transport.\n        raw = base64.b64decode(job[\"config_b64\"])\n        return {\"ok\": bool(config_service.load_tenant_config(raw))}"
+        },
+        {
+          "file": "sample-app/app/config_service.py",
+          "line_start": 12,
+          "line_end": 18,
+          "quote": "def load_tenant_config(raw: bytes) -> dict:\n    \"\"\"Parse a YAML config bundle uploaded via the admin console.\"\"\"\n    if len(raw) > MAX_CONFIG_BYTES:\n        raise ValueError(\"config bundle exceeds 256 KiB limit\")\n    # FullLoader keeps support for the custom !!merge tags the console emits\n    # (safe_load rejects them). Added 2021-06, see TKT-1421.\n    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)"
+        }
+      ],
+      "recommended_action": "Two-part fix, both required: bump PyYAML to >=6.0 AND replace FullLoader with a SafeLoader subclass that registers an explicit constructor for the console's !!merge tags. The version bump alone leaves the unsafe load semantics in place.",
+      "patch_hint": "-    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)\n+    return yaml.load(raw.decode(\"utf-8\"), Loader=SafeMergeLoader)",
+      "effort": "M",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-4863",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "10.0.1",
+      "severity": "HIGH",
+      "title": "libwebp: Heap buffer overflow in WebP Codec",
+      "description": "Heap buffer overflow in libwebp in Google Chrome prior to 116.0.5845.187 and libwebp 1.3.2 allowed a remote attacker to perform an out of bounds memory write via a crafted HTML page. (Chromium security severity: Critical)",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-4863",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "WebP heap overflow; customer avatar uploads are exactly the attack vector.",
+      "reasoning": "image_thumbs.py:13 calls Image.open on customer-uploaded bytes and Pillow 9.0.0 bundles the vulnerable libwebp decoder. A crafted WebP avatar triggers the heap buffer overflow during decode \u2014 before any post-upload handling. This CVE was exploited in the wild in 2023; the input is anonymous-customer-facing and the impact is memory corruption in the worker. Strongest finding in the scan alongside PyYAML.",
+      "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> WebP decode",
+      "attack_surface": "Any customer uploading a profile avatar; worker memory corruption.",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 11,
+          "line_end": 18,
+          "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+        }
+      ],
+      "recommended_action": "Bump Pillow to current stable (>=12.3.0). One PR closes this and all 20 other Pillow findings, including the three monitor cards.",
+      "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2021-32839",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.4.2",
+      "severity": "HIGH",
+      "title": "python-sqlparse: ReDoS via regular expression in StripComments filter",
+      "description": "sqlparse is a non-validating SQL parser module for Python. In sqlparse versions 0.4.0 and 0.4.1 there is a regular Expression Denial of Service in sqlparse vulnerability. The regular expression may cause exponential backtracking on strings containing many repetitions of '\\r\\n' in SQL comments. Only the formatting feature that removes comments from SQL statements is affected by this regular expression. As a workaround don't use the sqlformat.format function with keyword strip_comments=True or the --strip-comments command line flag when using the sqlformat command line tool. The issues has been fixed in sqlparse 0.4.2.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2021-32839",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "We pass strip_comments=True \u2014 the exact option this ReDoS triggers on.",
+      "reasoning": "query_log.py:16 feeds support-pasted, customer-influenced SQL into sqlparse.format(..., strip_comments=True). CVE-2021-32839 is a ReDoS in the StripComments filter, so the vulnerable code path is exercised verbatim by our call site. A crafted snippet pasted by a social-engineered support engineer stalls the worker. Same one-line bump as every other sqlparse finding.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format(..., strip_comments=True) -> StripComments filter",
+      "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Bump sqlparse to >=0.6.0 \u2014 a single PR closes all 9 sqlparse findings in this scan.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-71491",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.6.0",
+      "severity": "HIGH",
+      "title": "sqlparse: sqlparse: Denial of Service via quadratic CPU consumption in comment grouping",
+      "description": "sqlparse is a non-validating SQL parser module for Python. Prior to 0.6.0, group_comments in sqlparse/engine/grouping.py repeatedly rescans comment-only statements before the MAX_GROUPING_TOKENS guard, causing quadratic CPU consumption through sqlparse.parse() and sqlparse.format(sql, strip_comments=True). This issue is fixed in version 0.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-71491",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "strip_comments=True again \u2014 the comment-grouping quadratic rescan path.",
+      "reasoning": "Trigger is sqlparse.format(sql, strip_comments=True) causing quadratic rescans in group_comments before the token guard fires. Our call site passes that exact option on operator-pasted input, so worker starvation is reachable from the support console.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format(..., strip_comments=True) -> group_comments",
+      "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Bump sqlparse to >=0.6.0 \u2014 closes all 9 sqlparse findings in one PR.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-84305",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.6.0",
+      "severity": "MEDIUM",
+      "title": "sqlparse is a non-validating SQL parser module for Python. Prior to 0. ...",
+      "description": "sqlparse is a non-validating SQL parser module for Python. Prior to 0.6.0, sqlparse.format(sql, reindent=True) and sqlformat --reindent route attacker-controlled parenthesized tuple lists through ReindentFilter._get_offset() in sqlparse/filters/reindent.py, where _flatten_up_to_token() repeatedly rebuilds and joins the statement prefix. Thousands of offset calculations walk an expanding token tree, producing quadratic CPU consumption for inputs that remain below MAX_GROUPING_TOKENS and causing request delays, reduced throughput, or worker starvation. This issue is fixed in version 0.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-84305",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "reindent=True routes pasted input through the quadratic reindent path.",
+      "reasoning": "The advisory's trigger is sqlparse.format(sql, reindent=True) with attacker-controlled parenthesized tuple lists. query_log.py:17 passes reindent=True on support-pasted SQL, so the named code path (ReindentFilter._get_offset) runs on semi-trusted input and can burn quadratic CPU per lookup.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format(..., reindent=True) -> ReindentFilter._get_offset()",
+      "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Bump sqlparse to >=0.6.0 \u2014 closes all 9 sqlparse findings in one PR.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2022-45198",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "9.2.0",
+      "severity": "HIGH",
+      "title": "Pillow before 9.2.0 performs Improper Handling of Highly Compressed GI ...",
+      "description": "Pillow before 9.2.0 performs Improper Handling of Highly Compressed GIF Data (Data Amplification).",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2022-45198",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Highly compressed GIFs reach the decode path from avatar uploads.",
+      "reasoning": "Image.open decodes crafted GIFs during avatar processing, so this DoS is reachable from customer input. Impact is worker resource exhaustion (no memory corruption), partially mitigated by the gateway's 5 MiB upload cap and job-level timeouts. Rides the Pillow bump.",
+      "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> GIF decode",
+      "attack_surface": "Customers uploading avatar images; worker hang/OOM.",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 13,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+        }
+      ],
+      "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+      "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-55380",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "python-pillow: Pillow: Denial of Service via crafted GD 2.x image file",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, PIL/GdImageFile.py GdImageFile._open() read image dimensions from the GD 2.x header and stored them in self._size without calling Image._decompression_bomb_check(), allowing a crafted .gd file to trigger excessive C-heap allocation when loaded. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-55380",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Crafted GD 2.x headers reach allocation via Image.open dispatch.",
+      "reasoning": "GdImageFile._open() reads dimensions from a crafted header without the decompression-bomb check. Image.open dispatches by content signature rather than extension, so an avatar whose bytes claim the GD format reaches this path. DoS-class; rides the Pillow bump.",
+      "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> GdImageFile._open()",
+      "attack_surface": "Customers uploading avatar images; worker memory exhaustion.",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 13,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+        }
+      ],
+      "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+      "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59204",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Denial of Service via crafted JPEG2000 image",
+      "description": "Pillow is a Python imaging library. From 8.2.0 through 12.2.0, src/libImaging/Jpeg2KDecode.c accumulates total_component_width across every tile in a JPEG2000 image instead of recomputing it per tile, allowing a crafted tiled JPEG2000 file to force substantially higher transient memory usage and trigger out-of-memory failures during decoding. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59204",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Crafted JPEG2000 avatars reach the openjpeg decode path.",
+      "reasoning": "JPEG2000 is an Image.open-decodable format, so a crafted JPEG2000 avatar reaches the vulnerable decode path. DoS-class; same Pillow bump closes it.",
+      "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> JPEG2000 decode",
+      "attack_surface": "Customers uploading avatar images; worker resource exhaustion.",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 13,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+        }
+      ],
+      "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+      "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-54284",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.6.0",
+      "severity": "HIGH",
+      "title": "sqlparse: sqlparse: Denial of Service via quadratic CPU consumption in SQL parsing",
+      "description": "sqlparse is a non-validating SQL parser module for Python. Prior to 0.6.0, TokenList construction and string conversion in sqlparse/sql.py repeatedly flatten nested token subtrees constructed by group_parenthesis and group_case, causing quadratic CPU consumption through sqlparse.parse(), sqlparse.format(), and sqlparse.split() before depth and token limits terminate processing. This issue is fixed in version 0.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-54284",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Quadratic TokenList flattening via format(); batched with the bump.",
+      "reasoning": "Quadratic CPU through sqlparse.format() on deeply nested SQL. Our input is semi-trusted pasted text, so reachable in principle; DoS-class on an internal tool. Same remediation PR as the rest of the sqlparse findings.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format() -> TokenList flattening",
+      "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59893",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.6.0",
+      "severity": "HIGH",
+      "title": "sqlparse: sqlparse: Denial of Service via inefficient SQL parsing",
+      "description": "sqlparse is a non-validating SQL parser module for Python. Prior to 0.6.0, SQL_REGEX in sqlparse/keywords.py and the per-position loop in sqlparse/lexer.py repeatedly scan unmatched dollar-quoted literal and multiline-comment delimiters, causing quadratic CPU consumption through sqlparse.parse(), sqlparse.format(), and sqlparse.split(). This issue is fixed in version 0.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59893",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Quadratic delimiter scanning via format(); batched with the bump.",
+      "reasoning": "Unmatched dollar-quote and comment delimiters cause quadratic rescans through format(), reachable from pasted input. DoS-class on the internal lookup path; rides the same 0.6.0 bump.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format() -> lexer per-position loop",
+      "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-30608",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.4.4",
+      "severity": "MEDIUM",
+      "title": "sqlparse: Parser contains a regular expression that is vulnerable to ReDOS (Regular Expression Denial of Service)",
+      "description": "sqlparse is a non-validating SQL parser module for Python. In affected versions the SQL parser contains a regular expression that is vulnerable to ReDoS (Regular Expression Denial of Service). This issue was introduced by commit `e75e358`. The vulnerability may lead to Denial of Service (DoS). This issues has been fixed in sqlparse 0.4.4 by commit `c457abd5f`. Users are advised to upgrade. There are no known workarounds for this issue.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-30608",
+      "target": "requirements.txt",
+      "verdict": "monitor",
+      "confidence": "medium",
+      "one_line": "Lexer ReDoS reachable through format(); folds into the same bump.",
+      "reasoning": "The vulnerable regexes sit in sqlparse's lexer and fire through parse/format on crafted input, which our support-console path does pass. Impact is DoS on an internal lookup path, and the 0.4.4 fix is superseded by the same 0.6.0 bump that closes the whole sqlparse cluster \u2014 batch it rather than acting out-of-band.",
+      "vulnerable_path": "normalize_query() -> sqlparse.format() -> lexer regexes",
+      "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+      "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2022-22817",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "9.0.1",
+      "severity": "CRITICAL",
+      "title": "python-pillow: PIL.ImageMath.eval allows evaluation of arbitrary expressions",
+      "description": "PIL.ImageMath.eval in Pillow before 9.0.0 allows evaluation of arbitrary expressions, such as ones that use the Python exec method. A lambda expression could also be used.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2022-22817",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "CRITICAL-rated, but ImageMath.eval is never called in this codebase.",
+      "reasoning": "The RCE requires PIL.ImageMath.eval on attacker-influenced expressions. This service only calls open/convert/thumbnail/save (image_thumbs.py:13-17) \u2014 zero references to ImageMath anywhere in the repo. The headline severity does not survive contact with the code.",
+      "vulnerable_path": "not reachable \u2014 ImageMath.eval never invoked",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 11,
+          "line_end": 18,
+          "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump; revisit if image-expression evaluation is ever added.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-50447",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "10.2.0",
+      "severity": "CRITICAL",
+      "title": "pillow: Arbitrary Code Execution via the environment parameter",
+      "description": "Pillow through 10.1.0 allows PIL.ImageMath.eval Arbitrary Code Execution via the environment parameter, a different vulnerability than CVE-2022-22817 (which was about the expression parameter).",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-50447",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Second ImageMath.eval RCE; same unreachable API.",
+      "reasoning": "Same vulnerable API as CVE-2022-22817 (environment parameter). ImageMath is never imported or called here, so neither variant is reachable from avatar processing.",
+      "vulnerable_path": "not reachable \u2014 ImageMath.eval never invoked",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 17,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2022-24303",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "9.0.1",
+      "severity": "HIGH",
+      "title": "python-pillow: temporary directory with a space character allows removal of unrelated file after im.show() and related actions",
+      "description": "Pillow before 9.0.1 allows attackers to delete files because spaces in temporary pathnames are mishandled.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2022-24303",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Temp-path file removal via im.show(); we render to BytesIO.",
+      "reasoning": "The file-deletion bug requires Pillow's temp-file handling around show()/related actions. This worker never calls show() and never writes to the filesystem \u2014 thumbnails are produced in memory via BytesIO.",
+      "vulnerable_path": "not reachable \u2014 no show(), no temp paths",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 16,
+          "line_end": 18,
+          "quote": "        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-44271",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "10.0.0",
+      "severity": "HIGH",
+      "title": "python-pillow: uncontrolled resource consumption when textlength in an ImageDraw instance operates on a long text argument",
+      "description": "An issue was discovered in Pillow before 10.0.0. It is a Denial of Service that uncontrollably allocates memory to process a given task, potentially causing a service to crash by having it run out of memory. This occurs for truetype in ImageFont when textlength in an ImageDraw instance operates on a long text argument.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-44271",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "ImageDraw.textlength / truetype fonts \u2014 never used here.",
+      "reasoning": "The DoS requires ImageFont.truetype and ImageDraw text operations. This worker only resizes uploaded avatars; no text rendering or font loading exists in the repo.",
+      "vulnerable_path": "not reachable \u2014 ImageDraw/ImageFont never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 17,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-28219",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "10.3.0",
+      "severity": "HIGH",
+      "title": "python-pillow: buffer overflow in _imagingcms.c",
+      "description": "In _imagingcms.c in Pillow before 10.3.0, a buffer overflow exists because strcpy is used instead of strncpy.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-28219",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Buffer overflow in _imagingcms.c; ImageCms is never used.",
+      "reasoning": "The overflow lives in the ImageCms color-management module. Nothing in this codebase touches ImageCms \u2014 imports are limited to PIL.Image.",
+      "vulnerable_path": "not reachable \u2014 ImageCms never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-54058",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Memory disclosure or denial of service via crafted McIdas AREA image",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, when Pillow loads an uncompressed McIdas AREA image from a filename through the mmap raw codec path, attacker-controlled header words can set a row stride smaller than the natural row width, causing pixel access such as Image.tobytes(), getpixel, convert, or save to read beyond the mapped region and disclose adjacent process memory or fault. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-54058",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "McIdas mmap path requires loading from a filename; we load from BytesIO.",
+      "reasoning": "The OOB read happens on the mmap raw codec path when an uncompressed McIdas AREA image is loaded from a filename. Our avatars are decoded from an in-memory BytesIO, which never takes the mmap-from-filename route, so the precondition cannot hold.",
+      "vulnerable_path": "not reachable \u2014 mmap filename path not used (BytesIO input)",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 13,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-54059",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "python-pillow: Pillow: Denial of Service via crafted PCF font data",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, PIL/PcfFontFile.py _load_bitmaps() read glyph dimensions from the PCF METRICS section and passed them directly to Image.frombytes() without calling Image._decompression_bomb_check(), allowing crafted PCF font data to cause excessive memory allocation. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-54059",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "PCF font DoS; no font files are ever loaded.",
+      "reasoning": "Trigger is loading crafted PCF font data. This service loads no fonts of any kind \u2014 only image bytes.",
+      "vulnerable_path": "not reachable \u2014 no font loading",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-54060",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "python-pillow: Pillow: Denial of Service via excessive memory allocation when processing font files",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, PIL/FontFile.py FontFile.compile() assembled per-glyph images into a combined bitmap with Image.new(\"1\", (xsize, ysize)) without calling Image._decompression_bomb_check(), allowing a font to trigger excessive allocation during conversion or saving. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-54060",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "FontFile.compile() memory blowup; no font compilation.",
+      "reasoning": "Trigger is FontFile.compile() assembling per-glyph bitmaps. No fonts are compiled or loaded anywhere in the worker.",
+      "vulnerable_path": "not reachable \u2014 no font compilation",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-55379",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "python-pillow: Pillow: Denial of Service via crafted BDF font file",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, PIL/BdfFontFile.py bdf_char() read the BBX width and height field from a BDF font file and passed attacker-controlled dimensions to Image.new() without calling Image._decompression_bomb_check(), bypassing Pillow's documented decompression bomb protection and allowing excessive memory allocation. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-55379",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "BDF font DoS; no font files are ever loaded.",
+      "reasoning": "Trigger is a crafted BDF font file. No font handling exists in this codebase.",
+      "vulnerable_path": "not reachable \u2014 no font loading",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59197",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Native heap out-of-bounds write",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, Pillow's public rank-filter API can trigger a native heap out-of-bounds write when given a very large odd filter size because ImageFilter.RankFilter.filter() calls image.expand(size // 2, size // 2) before rank-filter size validation and ImagingExpand() computes output dimensions with unchecked signed int arithmetic. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59197",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "RankFilter OOB write; no filters are applied.",
+      "reasoning": "Trigger is ImageFilter.RankFilter with a pathological size. The thumbnail flow applies no filters at all \u2014 only convert, thumbnail, save.",
+      "vulnerable_path": "not reachable \u2014 ImageFilter never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 17,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59199",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Denial of Service via out-of-bounds write in image processing",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, Pillow public image coordinate APIs can trigger a native heap out-of-bounds write when given coordinates near the signed 32-bit integer limits in Image.paste(), Image.crop(), or Image.alpha_composite(). This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59199",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Extreme-coordinate paste/crop/composite; our coordinates are fixed.",
+      "reasoning": "The OOB write needs coordinates near the signed 32-bit limits passed to paste/crop/alpha_composite. The only coordinates this worker ever passes are the constant THUMB_SIZE (256, 256); user input never influences geometry.",
+      "vulnerable_path": "not reachable \u2014 coordinates are constants",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 6,
+          "line_end": 6,
+          "quote": "THUMB_SIZE = (256, 256)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59200",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Denial of service via crafted PDF stream",
+      "description": "Pillow is a Python imaging library. From 5.1.0 until 12.3.0, PdfParser.PdfStream.decode() in PIL/PdfParser.py calls zlib.decompress() with bufsize set to the PDF stream Length field without bounding the decompressed output size, allowing a crafted FlateDecode PDF stream to exhaust memory from a small file. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59200",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "medium",
+      "one_line": "Crafted PDF stream DoS; no PDF path in this worker.",
+      "reasoning": "The zlib-decompress blowup lives in PdfParser.PdfStream.decode(). This service never assembles or parses PDFs \u2014 avatars in, PNG bytes out \u2014 so no crafted stream can reach the parser. Marked medium confidence because the parser is technically present in the installed package; re-triage if PDF output is ever added.",
+      "vulnerable_path": "not reachable \u2014 PDF plugin unused (PNG-only output)",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 16,
+          "line_end": 17,
+          "quote": "        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump; re-triage if PDF handling is added.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59205",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "HIGH",
+      "title": "Pillow: Pillow: Controlled native heap corruption in ImageCms.ImageCmsTransform.apply API",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, Pillow's ImageCms.ImageCmsTransform.apply(im, imOut) API can trigger controlled native heap corruption when the caller supplies an output image whose mode does not match the transform's declared output mode. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59205",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "ImageCms heap corruption; ImageCms is never used.",
+      "reasoning": "Lives in ImageCms, which this codebase never imports or calls.",
+      "vulnerable_path": "not reachable \u2014 ImageCms never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-37920",
+      "package": "certifi",
+      "installed": "2022.9.24",
+      "fixed": "2023.7.22",
+      "severity": "HIGH",
+      "title": "python-certifi: Removal of e-Tugra root certificate",
+      "description": "Certifi is a curated collection of Root Certificates for validating the trustworthiness of SSL certificates while verifying the identity of TLS hosts. Certifi prior to version 2023.07.22 recognizes \"e-Tugra\" root certificates. e-Tugra's root certificates were subject to an investigation prompted by reporting of security issues in their systems. Certifi 2023.07.22 removes root certificates from \"e-Tugra\" from the root store.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-37920",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "medium",
+      "one_line": "Untrusted e-Tugra root in the store; no external TLS peers to validate.",
+      "reasoning": "Trust-store hygiene findings matter when the store validates external endpoints. The only TLS peer is the internal ledger on the mesh; an untrusted root could only mis-validate connections this service never makes.",
+      "vulnerable_path": "not reachable in practice \u2014 no external TLS validation",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "Fold the certifi bump into the lockfile refresh; revisit before any public egress ships.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-4340",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.5.0",
+      "severity": "HIGH",
+      "title": "sqlparse: parsing heavily nested list leads to denial of service",
+      "description": "Passing a heavily nested list to sqlparse.parse() leads to a Denial of Service due to RecursionError.\n\n",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-4340",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Trigger needs a nested list passed to parse(); we pass a string.",
+      "reasoning": "The DoS requires passing a heavily nested Python list into sqlparse.parse(). Our only call site passes a str (the pasted snippet), so the recursion path never engages.",
+      "vulnerable_path": "not reachable \u2014 input type mismatch (list vs str)",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 15,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,"
+        }
+      ],
+      "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2021-33503",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "1.26.5",
+      "severity": "HIGH",
+      "title": "python-urllib3: ReDoS in the parsing of authority part of URL",
+      "description": "An issue was discovered in urllib3 before 1.26.5. When provided with a URL containing many @ characters in the authority component, the authority regular expression exhibits catastrophic backtracking, causing a denial of service if a URL were passed as a parameter or redirected to via an HTTP redirect.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2021-33503",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "ReDoS parsing untrusted URL authorities; the only URL is a fixed literal.",
+      "reasoning": "urllib3 only parses the authority of the URL it is given. This service hands it one hardcoded internal hostname for its entire lifetime \u2014 no attacker-controlled URL ever reaches the parser.",
+      "vulnerable_path": "not reachable \u2014 URL is a fixed literal",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "None out-of-band; batch-upgrade urllib3 in the next lockfile refresh. Revisit if the service ever fetches external URLs.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-43804",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.0.6, 1.26.17",
+      "severity": "HIGH",
+      "title": "python-urllib3: Cookie request header isn't stripped during cross-origin redirects",
+      "description": "urllib3 is a user-friendly HTTP client library for Python. urllib3 doesn't treat the `Cookie` HTTP header special or provide any helpers for managing cookies over HTTP, that is the responsibility of the user. However, it is possible for a user to specify a `Cookie` header and unknowingly leak information via HTTP redirects to a different origin if that user doesn't disable redirects explicitly. This issue has been patched in urllib3 version 1.26.17 or 2.0.5.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-43804",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Cross-origin redirect header leak; we send no cookies or auth headers.",
+      "reasoning": "The leak forwards Cookie headers across origins on redirect. Our settlement POST sends no cookies, no Proxy-Authorization, no auth headers \u2014 just a payment-id JSON body \u2014 and the fixed internal peer does not redirect cross-origin.",
+      "vulnerable_path": "not reachable \u2014 no credentials in flight, no cross-origin redirects",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2025-66418",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.6.0",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3: Unbounded decompression chain leads to resource exhaustion",
+      "description": "urllib3 is a user-friendly HTTP client library for Python. Starting in version 1.24 and prior to 2.6.0, the number of links in the decompression chain was unbounded allowing a malicious server to insert a virtually unlimited number of compression steps leading to high CPU usage and massive memory allocation for the decompressed data. This vulnerability is fixed in 2.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2025-66418",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Decompression-bomb chain needs a malicious server; our only peer is the mesh.",
+      "reasoning": "Every decompression-bomb variant in urllib3 requires a hostile HTTP server. This service talks to exactly one TLS peer \u2014 the internal ledger on the service mesh \u2014 which sits outside this service's threat model. If the mesh is compromised, a scanner finding is the least of our problems.",
+      "vulnerable_path": "not reachable \u2014 sole peer is a trusted internal service",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh. Revisit before this service ever calls an external URL.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2025-66471",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.6.0",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3 Streaming API improperly handles highly compressed data",
+      "description": "urllib3 is a user-friendly HTTP client library for Python. Starting in version 1.0 and prior to 2.6.0, the Streaming API improperly handles highly compressed data. urllib3's streaming API is designed for the efficient handling of large HTTP responses by reading the content in chunks, rather than loading the entire response body into memory at once. When streaming a compressed response, urllib3 can perform decoding or decompression based on the HTTP Content-Encoding header (e.g., gzip, deflate, br, or zstd). The library must read compressed data from the network and decompress it until the requested chunk size is met. Any resulting decompressed data that exceeds the requested amount is held in an internal buffer for the next read operation. The decompression logic could cause urllib3 to fully decode a small amount of highly compressed data in a single operation. This can result in excessive resource consumption (high CPU usage and massive memory allocation for the decompressed data.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2025-66471",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Streaming-API decompression issue; we buffer and never stream.",
+      "reasoning": "The vulnerable path is urllib3's streaming API, which this service never uses \u2014 responses are read whole from a trusted internal peer. Same trust-model reasoning as CVE-2025-66418.",
+      "vulnerable_path": "not reachable \u2014 streaming API unused, trusted peer",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-21441",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.6.3",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3 vulnerable to decompression-bomb safeguard bypass when following HTTP redirects (streaming API)",
+      "description": "urllib3 is an HTTP client library for Python. urllib3's streaming API is designed for the efficient handling of large HTTP responses by reading the content in chunks, rather than loading the entire response body into memory at once. urllib3 can perform decoding or decompression based on the HTTP `Content-Encoding` header (e.g., `gzip`, `deflate`, `br`, or `zstd`). When using the streaming API, the library decompresses only the necessary bytes, enabling partial content consumption. Starting in version 1.22 and prior to version 2.6.3, for HTTP redirect responses, the library would read the entire response body to drain the connection and decompress the content unnecessarily. This decompression occurred even before any read methods were called, and configured read limits did not restrict the amount of decompressed data. As a result, there was no safeguard against decompression bombs. A malicious server could exploit this to trigger excessive resource consumption on the client. Applications and libraries are affected when they stream content from untrusted sources by setting `preload_content=False` when they do not disable redirects. Users should upgrade to at least urllib3 v2.6.3, in which the library does not decode content of redirect responses when `preload_content=False`. If upgrading is not immediately possible, disable redirects by setting `redirect=False` for requests to untrusted source.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-21441",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Redirect-following decompression bypass; no redirects, no streaming.",
+      "reasoning": "Trigger requires following redirect responses through the streaming API. This service does neither \u2014 fixed peer, no redirects, buffered reads.",
+      "vulnerable_path": "not reachable \u2014 no redirects, streaming unused",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-44431",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.7.0",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3: Information disclosure via cross-origin redirects forwarding sensitive headers",
+      "description": "urllib3 is an HTTP client library for Python. From 1.23 to before 2.7.0, cross-origin redirects followed from the low-level API via ProxyManager.connection_from_url().urlopen(..., assert_same_host=False) still forward these sensitive headers. This vulnerability is fixed in 2.7.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-44431",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Low-level ProxyManager redirect leak; we use the high-level API only.",
+      "reasoning": "Trigger is ProxyManager.connection_from_url().urlopen(..., assert_same_host=False) on the low-level API. This service goes through requests' high-level post() and instantiates no ProxyManager.",
+      "vulnerable_path": "not reachable \u2014 ProxyManager never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-97687",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.8.0",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3: Traffic interception via HTTPS proxy TLS configuration override",
+      "description": "urllib3 is an HTTP client library for Python. From 1.26.0 until 2.8.0, the proxy_ssl_context, proxy_assert_hostname, proxy_assert_fingerprint, ssl_context, cert_reqs, verify_mode, use_forwarding_for_https=True, and CERT_NONE configuration paths fail to remain separated because target-server TLS settings are incorrectly applied to the HTTPS proxy connection. The trigger is that an application uses an HTTPS proxy and configures target-server TLS settings that must remain separate from the proxy TLS handshake, including HTTPS forwarding with target-specific identity or credentials. Applying cert_reqs=CERT_NONE can overwrite proxy_ssl_context.verify_mode in place, and the mutation persists so later connections reusing the same context may connect to the HTTPS proxy without certificate verification. The attack mechanism is that an attacker intercepts and impersonates the HTTPS proxy after the effective proxy policy accepts the attacker's certificate. The impact is that the attacker can observe or modify forwarded traffic or receive a target TLS client certificate, while CONNECT tunneling still preserves the separate end-to-end target TLS connection. This issue is fixed in version 2.8.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-97687",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "HTTPS-proxy TLS interception issue; no proxy exists.",
+      "reasoning": "The misconfiguration involves proxy TLS handling. No proxy is configured for this service, direct mesh egress only.",
+      "vulnerable_path": "not reachable \u2014 no proxy configuration",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 3,
+          "line_end": 4,
+          "quote": "Outbound HTTPS only. Egress goes straight to the internal service mesh;\nno corporate proxy is configured for this service."
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-97689",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.8.0",
+      "severity": "HIGH",
+      "title": "urllib3: urllib3: Denial of Service via unbounded memory allocation in chunk parser",
+      "description": "urllib3 is an HTTP client library for Python. From 1.10.3 until 2.8.0, the HTTPResponse.read_chunked and HTTPResponse.stream methods can allocate unbounded memory because the streaming chunk parser buffers the chunk-size field until newline or EOF without a length bound. The trigger is that a malicious server returns Transfer-Encoding: chunked followed by a very long run of bytes without a newline. The attack mechanism is that a malicious HTTP server sends a very long unterminated chunk-size line. The impact is that unbounded memory allocation can exhaust the client process. This issue is fixed in version 2.8.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-97689",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Chunked-parser memory exhaustion needs a malicious server; trusted peer.",
+      "reasoning": "A hostile server sending an unterminated chunk-size line triggers the unbounded allocation. The only server this client talks to is the internal ledger on the mesh.",
+      "vulnerable_path": "not reachable \u2014 sole peer is a trusted internal service",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2020-28493",
+      "package": "Jinja2",
+      "installed": "2.11.2",
+      "fixed": "2.11.3",
+      "severity": "MEDIUM",
+      "title": "python-jinja2: ReDoS vulnerability in the urlize filter",
+      "description": "This affects the package jinja2 from 0.0.0 and before 2.11.3. The ReDoS vulnerability is mainly due to the `_punctuation_re regex` operator and its use of multiple wildcards. The last wildcard is the most exploitable as it searches for trailing punctuation. This issue can be mitigated by Markdown to format user content instead of the urlize filter, or by implementing request timeouts and limiting process memory.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2020-28493",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Jinja2 is never imported \u2014 dead pin; delete it instead of patching it.",
+      "reasoning": "Zero references to jinja anywhere in app/ (verified by search). The pin is legacy from the retired admin console (requirements.txt:10-11). Not reachable \u2014 and the better remediation is removal: deleting the pin (with MarkupSafe) permanently clears 5 findings from every future scan and shrinks the worker image.",
+      "vulnerable_path": "not reachable \u2014 dead dependency",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/requirements.txt",
+          "line_start": 10,
+          "line_end": 12,
+          "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+        }
+      ],
+      "recommended_action": "Remove the Jinja2 and MarkupSafe pins in the next lockfile refresh rather than upgrading.",
+      "patch_hint": "- Jinja2==2.11.2\n- MarkupSafe==1.1.1",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-22195",
+      "package": "Jinja2",
+      "installed": "2.11.2",
+      "fixed": "3.1.3",
+      "severity": "MEDIUM",
+      "title": "jinja2: HTML attribute injection when passing user input as keys to xmlattr filter",
+      "description": "Jinja is an extensible templating engine. Special placeholders in the template allow writing code similar to Python syntax. It is possible to inject arbitrary HTML attributes into the rendered HTML template, potentially leading to Cross-Site Scripting (XSS). The Jinja `xmlattr` filter can be abused to inject arbitrary HTML attribute keys and values, bypassing the auto escaping mechanism and potentially leading to XSS. It may also be possible to bypass attribute validation checks if they are blacklist-based.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-22195",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Dead dependency \u2014 Jinja2 is never imported.",
+      "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+      "vulnerable_path": "not reachable \u2014 dead dependency",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/requirements.txt",
+          "line_start": 10,
+          "line_end": 12,
+          "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+        }
+      ],
+      "recommended_action": "Remove the pin in the next lockfile refresh.",
+      "patch_hint": "- Jinja2==2.11.2",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-34064",
+      "package": "Jinja2",
+      "installed": "2.11.2",
+      "fixed": "3.1.4",
+      "severity": "MEDIUM",
+      "title": "jinja2: accepts keys containing non-attribute characters",
+      "description": "Jinja is an extensible templating engine. The `xmlattr` filter in affected versions of Jinja accepts keys containing non-attribute characters. XML/HTML attributes cannot contain spaces, `/`, `>`, or `=`, as each would then be interpreted as starting a separate attribute. If an application accepts keys (as opposed to only values) as user input, and renders these in pages that other users see as well, an attacker could use this to inject other attributes and perform XSS. The fix for CVE-2024-22195 only addressed spaces but not other characters. Accepting keys as user input is now explicitly considered an unintended use case of the `xmlattr` filter, and code that does so without otherwise validating the input should be flagged as insecure, regardless of Jinja version. Accepting _values_ as user input continues to be safe. This vulnerability is fixed in 3.1.4.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-34064",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Dead dependency \u2014 Jinja2 is never imported.",
+      "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+      "vulnerable_path": "not reachable \u2014 dead dependency",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/requirements.txt",
+          "line_start": 10,
+          "line_end": 12,
+          "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+        }
+      ],
+      "recommended_action": "Remove the pin in the next lockfile refresh.",
+      "patch_hint": "- Jinja2==2.11.2",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-56326",
+      "package": "Jinja2",
+      "installed": "2.11.2",
+      "fixed": "3.1.5",
+      "severity": "MEDIUM",
+      "title": "jinja2: Jinja has a sandbox breakout through indirect reference to format method",
+      "description": "Jinja is an extensible templating engine. Prior to 3.1.5, An oversight in how the Jinja sandboxed environment detects calls to str.format allows an attacker that controls the content of a template to execute arbitrary Python code. To exploit the vulnerability, an attacker needs to control the content of a template. Whether that is the case depends on the type of application using Jinja. This vulnerability impacts users of applications which execute untrusted templates. Jinja's sandbox does catch calls to str.format and ensures they don't escape the sandbox. However, it's possible to store a reference to a malicious string's format method, then pass that to a filter that calls it. No such filters are built-in to Jinja, but could be present through custom filters in an application. After the fix, such indirect calls are also handled by the sandbox. This vulnerability is fixed in 3.1.5.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-56326",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Dead dependency \u2014 Jinja2 is never imported.",
+      "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+      "vulnerable_path": "not reachable \u2014 dead dependency",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/requirements.txt",
+          "line_start": 10,
+          "line_end": 12,
+          "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+        }
+      ],
+      "recommended_action": "Remove the pin in the next lockfile refresh.",
+      "patch_hint": "- Jinja2==2.11.2",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2025-27516",
+      "package": "Jinja2",
+      "installed": "2.11.2",
+      "fixed": "3.1.6",
+      "severity": "MEDIUM",
+      "title": "jinja2: Jinja sandbox breakout through attr filter selecting format method",
+      "description": "Jinja is an extensible templating engine. Prior to 3.1.6, an oversight in how the Jinja sandboxed environment interacts with the |attr filter allows an attacker that controls the content of a template to execute arbitrary Python code. To exploit the vulnerability, an attacker needs to control the content of a template. Whether that is the case depends on the type of application using Jinja. This vulnerability impacts users of applications which execute untrusted templates. Jinja's sandbox does catch calls to str.format and ensures they don't escape the sandbox. However, it's possible to use the |attr filter to get a reference to a string's plain format method, bypassing the sandbox. After the fix, the |attr filter no longer bypasses the environment's attribute lookup. This vulnerability is fixed in 3.1.6.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2025-27516",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Dead dependency \u2014 Jinja2 is never imported.",
+      "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+      "vulnerable_path": "not reachable \u2014 dead dependency",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/requirements.txt",
+          "line_start": 10,
+          "line_end": 12,
+          "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+        }
+      ],
+      "recommended_action": "Remove the pin in the next lockfile refresh.",
+      "patch_hint": "- Jinja2==2.11.2",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-42308",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.2.0",
+      "severity": "MEDIUM",
+      "title": "Pillow: Pillow: Denial of Service via integer overflow in font processing",
+      "description": "Pillow is a Python imaging library. Prior to version 12.2.0, if a font advances for each glyph by an exceeding large amount, when Pillow keeps track of the current position, it may lead to an integer overflow. This issue has been patched in version 12.2.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-42308",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Integer overflow in font processing; no fonts here.",
+      "reasoning": "Font-family issue; this service never loads or processes font files.",
+      "vulnerable_path": "not reachable \u2014 no font loading",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 4,
+          "line_end": 4,
+          "quote": "from PIL import Image"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-42310",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.2.0",
+      "severity": "MEDIUM",
+      "title": "Pillow: Pillow: Denial of Service via malicious PDF processing",
+      "description": "Pillow is a Python imaging library. From version 4.2.0 to before version 12.2.0, an attacker can supply a malicious PDF that causes the process to hang indefinitely, consuming 100% CPU and making the application unresponsive. This issue has been patched in version 12.2.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-42310",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "medium",
+      "one_line": "Malicious PDF processing; PDFs never enter this worker.",
+      "reasoning": "The worker's only Pillow entry point is Image.open on avatar bytes and a PNG-only save. Nothing in the job pipeline names PDFs, and the repo has no PDF handling. If PDF rendering is ever added, re-triage this one.",
+      "vulnerable_path": "not reachable \u2014 no PDF inputs or outputs in this service",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 17,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump; re-triage if PDF handling is added.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-55798",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "MEDIUM",
+      "title": "python-pillow: Pillow: Arbitrary command injection via shell metacharacters in file paths",
+      "description": "Pillow is a Python imaging library. Prior to 12.3.0, WindowsViewer.get_command() constructed a cmd.exe shell command by directly embedding a file path into an f-string without escaping and passed the result to subprocess.Popen(..., shell=True), allowing shell metacharacters in the file path to inject arbitrary cmd.exe commands. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-55798",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Windows cmd.exe injection via WindowsViewer; Linux worker, no show().",
+      "reasoning": "The command injection is in WindowsViewer.get_command(), reached through Image.show() on Windows. Workers run Linux and never call show(); the vulnerable class never loads.",
+      "vulnerable_path": "not reachable \u2014 Windows-only viewer path, no show()",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 13,
+          "line_end": 17,
+          "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59198",
+      "package": "Pillow",
+      "installed": "9.0.0",
+      "fixed": "12.3.0",
+      "severity": "MEDIUM",
+      "title": "Pillow: Pillow: Information disclosure via TGA RLE encoder out-of-bounds read",
+      "description": "Pillow is a Python imaging library. From 5.2.0 until 12.3.0, Pillow's TGA RLE encoder reads past its packed row buffer when saving a mode 1 image with TGA RLE compression, allowing adjacent process heap bytes to be copied into the generated TGA file. This issue is fixed in version 12.3.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59198",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "TGA encoder info leak; we only ever save PNG.",
+      "reasoning": "The OOB read is in the TGA RLE encoder. The thumbnail flow saves PNG exclusively (out_format defaults to 'PNG' and callers never override), so the encoder is never invoked.",
+      "vulnerable_path": "not reachable \u2014 TGA encoding never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/image_thumbs.py",
+          "line_start": 11,
+          "line_end": 11,
+          "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:"
+        }
+      ],
+      "recommended_action": "No action beyond the Pillow bump.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2022-23491",
+      "package": "certifi",
+      "installed": "2022.9.24",
+      "fixed": "2022.12.07",
+      "severity": "MEDIUM",
+      "title": "python-certifi: untrusted root certificates",
+      "description": "Certifi is a curated collection of Root Certificates for validating the trustworthiness of SSL certificates while verifying the identity of TLS hosts. Certifi 2022.12.07 removes root certificates from \"TrustCor\" from the root store. These are in the process of being removed from Mozilla's trust store. TrustCor's root certificates are being removed pursuant to an investigation prompted by media reporting that TrustCor's ownership also operated a business that produced spyware. Conclusions of Mozilla's investigation can be found in the linked google group discussion.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2022-23491",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "medium",
+      "one_line": "Untrusted GLOBALTRUST roots; same external-validation reasoning.",
+      "reasoning": "Same class as CVE-2023-37920: an untrusted root only matters for endpoints validated against certifi, and this service validates one internal mesh host.",
+      "vulnerable_path": "not reachable in practice \u2014 no external TLS validation",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "Fold the certifi bump into the lockfile refresh; revisit before any public egress ships.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-3651",
+      "package": "idna",
+      "installed": "3.3",
+      "fixed": "3.7",
+      "severity": "MEDIUM",
+      "title": "python-idna: potential DoS via resource consumption via specially crafted inputs to idna.encode()",
+      "description": "A vulnerability was identified in the kjd/idna library, specifically within the `idna.encode()` function, affecting version 3.6. The issue arises from the function's handling of crafted input strings, which can lead to quadratic complexity and consequently, a denial of service condition. This vulnerability is triggered by a crafted input that causes the `idna.encode()` function to process the input with considerable computational load, significantly increasing the processing time in a quadratic manner relative to the input size.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-3651",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "ReDoS on crafted hostnames; the only hostname is a fixed literal.",
+      "reasoning": "idna only parses what it is handed. The sole hostname ever parsed in this service is the hardcoded internal ledger host \u2014 no attacker-controlled DNS names enter.",
+      "vulnerable_path": "not reachable \u2014 hostname is a fixed literal",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "None; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-45409",
+      "package": "idna",
+      "installed": "3.3",
+      "fixed": "3.15",
+      "severity": "MEDIUM",
+      "title": "python-idna: idna: Denial of Service via specially crafted long inputs",
+      "description": "Internationalized Domain Names in Applications (IDNA) for Python provides support for Internationalized Domain Names in Applications (IDNA) and Unicode IDNA Compatibility Processing. In versions prior to 3.15, payloads such as `\"\\u0660\" * N` or `\"\\u30fb\" * N + \"\\u6f22\"` utilize the `valid_contexto` function prior to length rejection, and for high values of `N` will take a long time to process. This is the same issue as CVE-2024-3651, however the original remediation in 2024 was not a complete fix. A specially crafted argument to the `idna.encode()` function could consume significant resources. This may lead to a denial-of-service. Starting in version 3.14, the function rejects long inputs as soon as practicable prior to any further processing to minimize resource consumption. In version 3.15, this approach was extended to lesser used alternate functions (i.e. per-label conversions and codec support). A workaround is available. Domain names cannot exceed 253 characters in length. If this length limit is enforced prior to passing the domain to the `idna.encode()` function, it should no longer consume significant resources. This is triggered by arbitrarily large inputs that would not occur in normal usage, but may be passed to the library assuming there is no preliminary input validation by the higher-level application.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-45409",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "DoS via long crafted inputs; no attacker-controlled hostnames.",
+      "reasoning": "Same reachability question as CVE-2024-3651 and the same answer: the only input idna ever sees is the fixed internal hostname.",
+      "vulnerable_path": "not reachable \u2014 hostname is a fixed literal",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "None; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-32681",
+      "package": "requests",
+      "installed": "2.28.0",
+      "fixed": "2.31.0",
+      "severity": "MEDIUM",
+      "title": "python-requests: Unintended leak of Proxy-Authorization header",
+      "description": "Requests is a HTTP library. Since Requests 2.3.0, Requests has been leaking Proxy-Authorization headers to destination servers when redirected to an HTTPS endpoint. This is a product of how we use `rebuild_proxies` to reattach the `Proxy-Authorization` header to requests. For HTTP connections sent through the tunnel, the proxy will identify the header in the request itself and remove it prior to forwarding to the destination server. However when sent over HTTPS, the `Proxy-Authorization` header must be sent in the CONNECT request as the proxy has no visibility into the tunneled request. This results in Requests forwarding proxy credentials to the destination server unintentionally, allowing a malicious actor to potentially exfiltrate sensitive information. This issue has been patched in version 2.31.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-32681",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Proxy-Authorization leak needs a proxy; this service configures none.",
+      "reasoning": "The leak requires requests to use a proxies entry carrying Proxy-Authorization across a 307 redirect. The sole call site (webhook_client.py:14-18) sends a plain JSON POST straight to the mesh \u2014 no proxies anywhere in the repo, no auth headers. The module docstring states egress is direct. Revisit the day a corporate egress proxy is adopted.",
+      "vulnerable_path": "not reachable \u2014 no proxy configuration exists",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None. Revisit if egress proxying is introduced; fold the requests bump into the next lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-35195",
+      "package": "requests",
+      "installed": "2.28.0",
+      "fixed": "2.32.0",
+      "severity": "MEDIUM",
+      "title": "requests: subsequent requests to the same host ignore cert verification",
+      "description": "Requests is a HTTP library. Prior to 2.32.0, when making requests through a Requests `Session`, if the first request is made with `verify=False` to disable cert verification, all subsequent requests to the same host will continue to ignore cert verification regardless of changes to the value of `verify`. This behavior will continue for the lifecycle of the connection in the connection pool. This vulnerability is fixed in 2.32.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-35195",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "verify=False session-reuse bug; we never disable verification.",
+      "reasoning": "The bug lets a Session ignore verify=False on subsequent requests. This service never creates a Session and never touches verify \u2014 the single requests.post call uses default verification.",
+      "vulnerable_path": "not reachable \u2014 no Sessions, verification always on",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-47081",
+      "package": "requests",
+      "installed": "2.28.0",
+      "fixed": "2.32.4",
+      "severity": "MEDIUM",
+      "title": "requests: Requests vulnerable to .netrc credentials leak via malicious URLs",
+      "description": "Requests is a HTTP library. Due to a URL parsing issue, Requests releases prior to 2.32.4 may leak .netrc credentials to third parties for specific maliciously-crafted URLs. Users should upgrade to version 2.32.4 to receive a fix. For older versions of Requests, use of the .netrc file can be disabled with `trust_env=False` on one's Requests Session.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-47081",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": ".netrc credential leak; no netrc auth in play and the URL is fixed.",
+      "reasoning": "The leak needs .netrc-based credentials to be attached and attacker-crafted URLs to redirect them. Our single fixed internal URL carries no netrc-derived auth, and no redirects are followed.",
+      "vulnerable_path": "not reachable \u2014 no netrc usage, fixed literal URL",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 9,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\"\nTIMEOUT_S = 5.0"
+        }
+      ],
+      "recommended_action": "None; folds into the lockfile refresh. (Defense-in-depth option: trust_env=False.)",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-25645",
+      "package": "requests",
+      "installed": "2.28.0",
+      "fixed": "2.33.0",
+      "severity": "MEDIUM",
+      "title": "requests: Requests: Security bypass due to predictable temporary file creation",
+      "description": "Requests is a HTTP library. Prior to version 2.33.0, the `requests.utils.extract_zipped_paths()` utility function uses a predictable filename when extracting files from zip archives into the system temporary directory. If the target file already exists, it is reused without validation. A local attacker with write access to the temp directory could pre-create a malicious file that would be loaded in place of the legitimate one. Standard usage of the Requests library is not affected by this vulnerability. Only applications that call `extract_zipped_paths()` directly are impacted. Starting in version 2.33.0, the library extracts files to a non-deterministic location. If developers are unable to upgrade, they can set `TMPDIR` in their environment to a directory with restricted write access.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-25645",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Advisory itself says only direct callers of extract_zipped_paths() are hit.",
+      "reasoning": "The advisory states standard requests usage is unaffected and only applications calling extract_zipped_paths() directly are impacted. This codebase never calls that utility.",
+      "vulnerable_path": "not reachable \u2014 extract_zipped_paths() never called",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2026-59894",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.6.0",
+      "severity": "MEDIUM",
+      "title": "sqlparse: sqlparse: Arbitrary code execution via unescaped backslashes in generated snippets",
+      "description": "sqlparse is a non-validating SQL parser module for Python. Prior to 0.6.0, sqlparse/filters/output.py fails to escape existing backslashes before quotes in sqlparse.format output_format='python' and output_format='php' and the corresponding sqlformat -l modes, allowing crafted SQL to terminate the generated string and inject Python or PHP code when a downstream consumer executes or imports the generated source. This issue is fixed in version 0.6.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2026-59894",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Code injection needs output_format='python'/'php'; we never set it.",
+      "reasoning": "The injection requires format(..., output_format='python' or 'php') so crafted SQL can escape the generated snippet. Our call site sets keyword_case/strip_comments/reindent only \u2014 no output_format, no generated source, nothing to inject into.",
+      "vulnerable_path": "not reachable \u2014 output_format never used",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 18,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+        }
+      ],
+      "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "GHSA-27jp-wm6q-gp25",
+      "package": "sqlparse",
+      "installed": "0.4.1",
+      "fixed": "0.5.4",
+      "severity": "MEDIUM",
+      "title": "sqlparse: formatting list of tuples leads to denial of service",
+      "description": "### Summary\nThe below gist hangs while attempting to format a long list of tuples.\n\nThis was found while [drafting a regression test for Dja\nngo 5.2's composite primary key feature](https://code.djangoproject.com/ticket/36416#comment:3), which allows querying composite fields with tuples.\n\n###",
+      "primary_url": "https://github.com/advisories/GHSA-27jp-wm6q-gp25",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Trigger is formatting a list of tuples; we format a string.",
+      "reasoning": "The DoS fires when sqlparse.format is given a list of tuples. Our input is a pasted SQL string, so this path is never exercised.",
+      "vulnerable_path": "not reachable \u2014 input type mismatch (list of tuples vs str)",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/query_log.py",
+          "line_start": 13,
+          "line_end": 15,
+          "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,"
+        }
+      ],
+      "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2023-45803",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.0.7, 1.26.18",
+      "severity": "MEDIUM",
+      "title": "urllib3: Request body not stripped after redirect from 303 status changes request method to GET",
+      "description": "urllib3 is a user-friendly HTTP client library for Python. urllib3 previously wouldn't remove the HTTP request body when an HTTP redirect response using status 301, 302, or 303 after the request had its method changed from one that could accept a request body (like `POST`) to `GET` as is required by HTTP RFCs. Although this behavior is not specified in the section for redirects, it can be inferred by piecing together information from different sections and we have observed the behavior in other major HTTP client implementations like curl and web browsers. Because the vulnerability requires a previously trusted service to become compromised in order to have an impact on confidentiality we believe the exploitability of this vulnerability is low. Additionally, many users aren't putting sensitive data in HTTP request bodies, if this is the case then this vulnerability isn't exploitable. Both of the following conditions must be true to be affected by this vulnerability: 1. Using urllib3 and submitting sensitive information in the HTTP request body (such as form data or JSON) and 2. The origin service is compromised and starts redirecting using 301, 302, or 303 to a malicious peer or the redirected-to service becomes compromised. This issue has been addressed in versions 1.26.18 and 2.0.7 and users are advised to update to resolve this issue. Users unable to update should disable redirects for services that aren't expecting to respond with redirects with `redirects=False` and disable automatic redirects with `redirects=False` and handle 301, 302, and 303 redirects manually by stripping the HTTP request body.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2023-45803",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Body re-sent after 303 redirect; no redirects, non-sensitive body.",
+      "reasoning": "The settlement flow does not follow redirects, and the request body carries only a payment id and amount \u2014 no credentials. Even in a hypothetical redirect, there is nothing sensitive to forward.",
+      "vulnerable_path": "not reachable \u2014 no redirects in the settlement flow",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-37891",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "1.26.19, 2.2.2",
+      "severity": "MEDIUM",
+      "title": "urllib3: proxy-authorization request header is not stripped during cross-origin redirects",
+      "description": " urllib3 is a user-friendly HTTP client library for Python. When using urllib3's proxy support with `ProxyManager`, the `Proxy-Authorization` header is only sent to the configured proxy, as expected. However, when sending HTTP requests *without* using urllib3's proxy support, it's possible to accidentally configure the `Proxy-Authorization` header even though it won't have any effect as the request is not using a forwarding proxy or a tunneling proxy. In those cases, urllib3 doesn't treat the `Proxy-Authorization` HTTP header as one carrying authentication material and thus doesn't strip the header on cross-origin redirects. Because this is a highly unlikely scenario, we believe the severity of this vulnerability is low for almost all users. Out of an abundance of caution urllib3 will automatically strip the `Proxy-Authorization` header during cross-origin redirects to avoid the small chance that users are doing this on accident. Users should use urllib3's proxy support or disable automatic redirects to achieve safe processing of the `Proxy-Authorization` header, but we still decided to strip the header by default in order to further protect users who aren't using the correct approach. We believe the number of usages affected by this advisory is low. It requires all of the following to be true to be exploited: 1. Setting the `Proxy-Authorization` header without using urllib3's built-in proxy support. 2. Not disabling HTTP redirects. 3. Either not using an HTTPS origin server or for the proxy or target origin to redirect to a malicious origin. Users are advised to update to either version 1.26.19 or version 2.2.2. Users unable to upgrade may use the `Proxy-Authorization` header with urllib3's `ProxyManager`, disable HTTP redirects using `redirects=False` when sending requests, or not user the `Proxy-Authorization` header as mitigations.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-37891",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Proxy-Authorization not stripped on cross-origin redirect; no proxy auth exists.",
+      "reasoning": "Same redirect-leak family as CVE-2023-43804 but for Proxy-Authorization. No proxies are configured, so the header is never present to leak.",
+      "vulnerable_path": "not reachable \u2014 no proxy authentication in use",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 3,
+          "line_end": 4,
+          "quote": "Outbound HTTPS only. Egress goes straight to the internal service mesh;\nno corporate proxy is configured for this service."
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2025-50181",
+      "package": "urllib3",
+      "installed": "1.26.4",
+      "fixed": "2.5.0",
+      "severity": "MEDIUM",
+      "title": "urllib3: urllib3 redirects are not disabled when retries are disabled on PoolManager instantiation",
+      "description": "urllib3 is a user-friendly HTTP client library for Python. Prior to 2.5.0, it is possible to disable redirects for all requests by instantiating a PoolManager and specifying retries in a way that disable redirects. By default, requests and botocore users are not affected. An application attempting to mitigate SSRF or open redirect vulnerabilities by disabling redirects at the PoolManager level will remain vulnerable. This issue has been patched in version 2.5.0.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2025-50181",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "high",
+      "one_line": "Redirects not disabled when retries are disabled; no redirects anyway.",
+      "reasoning": "The interplay bug matters only for flows that can be redirected. The settlement POST targets a fixed internal endpoint that does not redirect, and the code never follows one.",
+      "vulnerable_path": "not reachable \u2014 no redirects in this flow",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 14,
+          "line_end": 18,
+          "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+        }
+      ],
+      "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    },
+    {
+      "id": "CVE-2024-39689",
+      "package": "certifi",
+      "installed": "2022.9.24",
+      "fixed": "2024.7.4",
+      "severity": "LOW",
+      "title": "python-certifi: Remove root certificates from `GLOBALTRUST` from the root store",
+      "description": "Certifi is a curated collection of Root Certificates for validating the trustworthiness of SSL certificates while verifying the identity of TLS hosts. Certifi starting in 2021.5.30 and prior to 2024.7.4 recognized root certificates from `GLOBALTRUST`. Certifi 2024.7.04 removes root certificates from `GLOBALTRUST` from the root store. These are in the process of being removed from Mozilla's trust store. `GLOBALTRUST`'s root certificates are being removed pursuant to an investigation which identified \"long-running and unresolved compliance issues.\"",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2024-39689",
+      "target": "requirements.txt",
+      "verdict": "dismiss",
+      "confidence": "medium",
+      "one_line": "GLOBALTRUST root removal (LOW); same external-validation reasoning.",
+      "reasoning": "Same trust-store class as the other certifi findings; no external TLS validation happens in this service.",
+      "vulnerable_path": "not reachable in practice \u2014 no external TLS validation",
+      "attack_surface": "none",
+      "evidence": [
+        {
+          "file": "sample-app/app/webhook_client.py",
+          "line_start": 8,
+          "line_end": 8,
+          "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+        }
+      ],
+      "recommended_action": "Fold the certifi bump into the lockfile refresh.",
+      "patch_hint": "none",
+      "effort": "S",
+      "triaged_by": "cached"
+    }
+  ]
+}

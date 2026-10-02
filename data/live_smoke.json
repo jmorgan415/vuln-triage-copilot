@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "product": "Reach",
+    "customer": "Northgate Financial",
+    "target": "sample-app \u2014 northgate platform-worker",
+    "scanner": "trivy",
+    "backend": "droid",
+    "generated_at": "2026-10-02T02:08:30+00:00",
+    "assumptions": {
+      "manual_minutes_per_finding": 6,
+      "note": "manual baseline: read advisory, grep codebase, decide, write up"
+    },
+    "summary": {
+      "act_now": 1,
+      "monitor": 0,
+      "dismiss": 0,
+      "untriaged": 0
+    },
+    "manual_minutes_baseline": 6,
+    "review_minutes_estimate": 4
+  },
+  "findings": [
+    {
+      "id": "CVE-2020-14343",
+      "package": "PyYAML",
+      "installed": "5.3.1",
+      "fixed": "5.4",
+      "severity": "CRITICAL",
+      "title": "PyYAML: incomplete fix for CVE-2020-1747",
+      "description": "A vulnerability was discovered in the PyYAML library in versions before 5.4, where it is susceptible to arbitrary code execution when it processes untrusted YAML files through the full_load method or with the FullLoader loader. Applications that use the library to process untrusted input may be vulnerable to this flaw. This flaw allows an attacker to execute arbitrary code on the system by abusing the python/object/new constructor. This flaw is due to an incomplete fix for CVE-2020-1747.",
+      "primary_url": "https://avd.aquasec.com/nvd/cve-2020-14343",
+      "target": "requirements.txt",
+      "verdict": "act_now",
+      "confidence": "high",
+      "one_line": "Admin-uploaded YAML reaches the vulnerable PyYAML FullLoader in the worker.",
+      "reasoning": "The worker decodes tenant configuration from a queue job and passes it directly to yaml.FullLoader in PyYAML 5.3.1. That version's FullLoader can execute code when untrusted YAML abuses the python/object/new constructor. The 256 KiB limit does not restrict YAML constructors. The upload path is described as an internal admin-console feature, so the supported attack surface is someone able to submit or influence those bundles, not an arbitrary public user.",
+      "vulnerable_path": "Admin-console YAML upload \u2192 tenant_config queue job config_b64 \u2192 load_tenant_config(raw) \u2192 yaml.load(..., Loader=yaml.FullLoader) \u2192 python/object/new constructor.",
+      "attack_surface": "A workspace admin, or anyone able to influence a workspace admin's uploaded YAML bundle, can trigger parsing in the worker.",
+      "evidence": [
+        {
+          "file": "requirements.txt",
+          "line_start": 7,
+          "line_end": 7,
+          "quote": "PyYAML==5.3.1"
+        },
+        {
+          "file": "app/config_service.py",
+          "line_start": 3,
+          "line_end": 5,
+          "quote": "Workspace admins upload YAML config bundles through the internal admin\nconsole whenever a tenant changes integration settings; the worker\nparses them as part of the tenant_config job."
+        },
+        {
+          "file": "app/main.py",
+          "line_start": 20,
+          "line_end": 24,
+          "quote": "    if kind == \"tenant_config\":\n        # Queue envelope for the admin-console upload: the config bundle\n        # exactly as the console accepted it, base64-encoded for transport.\n        raw = base64.b64decode(job[\"config_b64\"])\n        return {\"ok\": bool(config_service.load_tenant_config(raw))}"
+        },
+        {
+          "file": "app/config_service.py",
+          "line_start": 12,
+          "line_end": 18,
+          "quote": "def load_tenant_config(raw: bytes) -> dict:\n    \"\"\"Parse a YAML config bundle uploaded via the admin console.\"\"\"\n    if len(raw) > MAX_CONFIG_BYTES:\n        raise ValueError(\"config bundle exceeds 256 KiB limit\")\n    # FullLoader keeps support for the custom !!merge tags the console emits\n    # (safe_load rejects them). Added 2021-06, see TKT-1421.\n    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)"
+        }
+      ],
+      "recommended_action": "Upgrade PyYAML to at least 5.4 and replace FullLoader with a safe loader; test the admin console's custom merge tags before deployment.",
+      "patch_hint": "Use yaml.safe_load(raw.decode(\"utf-8\")) after replacing the custom !!merge representation or adding only its required safe constructor to a SafeLoader subclass.",
+      "effort": "M",
+      "triaged_by": "droid"
+    }
+  ]
+}
