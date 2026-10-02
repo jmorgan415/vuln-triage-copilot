@@ -1,0 +1,12 @@
+# northgate platform-worker — pins mirror our CI lockfile (last rebuild 2024-03-11)
+requests==2.28.0
+urllib3==1.26.4
+certifi==2022.9.24
+charset-normalizer==2.0.12
+idna==3.3
+PyYAML==5.3.1
+sqlparse==0.4.1
+Pillow==9.0.0
+# legacy: html templates for the retired admin console (pin never cleaned up)
+Jinja2==2.11.2
+MarkupSafe==1.1.1

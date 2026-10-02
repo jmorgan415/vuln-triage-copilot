@@ -1,0 +1,4 @@
+{
+  "kind": "slow_query_lookup",
+  "sql_snippet": "select /* customer-reported slow query */ * from transactions where merchant_id = ?"
+}
