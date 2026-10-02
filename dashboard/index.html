@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reach — vulnerability triage copilot · Northgate Financial</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">◉</span>
+        <h1>Reach</h1>
+        <span class="tagline">reachability-first vulnerability triage</span>
+      </div>
+      <div class="context">
+        <span class="customer">Northgate Financial</span>
+        <span class="target">platform-worker · triaged by Droid</span>
+      </div>
+    </header>
+
+    <section class="metrics" id="metrics"></section>
+
+    <section class="switcher">
+      <button id="toggle-noise" class="btn-ghost">Show the raw scanner queue</button>
+      <span id="untriaged-note" class="untriaged-note" hidden></span>
+    </section>
+
+    <main id="board"></main>
+
+    <section id="noise" hidden>
+      <h2 class="noise-title">This is what the scanner handed Priya on Monday morning</h2>
+      <p class="noise-sub">No reachability, no evidence, no decisions — just severity and noise. Click any row to see what the agent concluded.</p>
+      <div id="noise-list"></div>
+    </section>
+
+    <div id="overlay" hidden></div>
+    <aside id="drawer" hidden>
+      <button id="drawer-close" class="btn-ghost">✕ close</button>
+      <div id="drawer-body"></div>
+    </aside>
+
+    <footer class="meta-strip" id="meta-strip"></footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
