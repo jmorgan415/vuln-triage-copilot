@@ -116,7 +116,7 @@ tell you that. Agents reading the code do."
 **The punchline.** "Four PRs — three version bumps and one pin
 deletion — close 36 of 56 findings. The remaining 20 need no code
 change, and each carries its reason. Priya's Monday on this service:
-5.6 hours to about 35 minutes."
+5.6 hours to about 32 minutes."
 
 ## Beat 5 — Why this output is trustworthy (4 min)
 
@@ -163,8 +163,8 @@ agent-driven pipeline."
 
 ## Beat 7 — Value and next steps (3 min)
 
-"For Northgate: this service's Monday queue drops from 5.6 hours to 35
-minutes, and the 35 minutes are spent on the 11 findings that matter.
+"For Northgate: this service's Monday queue drops from 5.6 hours to 32
+minutes, and those 32 minutes are spent on the 11 findings that matter.
 Multiply honestly across their services — Reach doesn't remove the
 security engineer's judgment; it removes the hours spent proving
 negatives, and it turns 'trust me, it doesn't apply' into a cited,

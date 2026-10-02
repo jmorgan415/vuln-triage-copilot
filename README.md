@@ -85,7 +85,7 @@ Headline numbers (all computed by the pipeline, not hand-waved):
 - 4 remediation PRs close 36 findings (3 bumps + 1 pin deletion)
 - 20 findings need no code change, each with a documented reason and
   a revisit trigger ("revisit the day an egress proxy is adopted")
-- Priya's Monday for this service: **5.6 h → ~35 min** (assumption is a
+- Priya's Monday for this service: **5.6 h → ~32 min** (assumption is a
   declared constant in the pipeline, not a marketing number)
 
 ## How this was built with Factory
