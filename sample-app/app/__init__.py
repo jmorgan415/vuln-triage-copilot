@@ -1,1 +1,1 @@
-Northgate Financial — platform worker package.
+"""Northgate Financial - platform worker package."""
