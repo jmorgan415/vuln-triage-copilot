@@ -1,0 +1,1073 @@
+{
+  "_provenance": "Golden verdicts authored by Droid (Factory) sessions on 2026-10-01, triaging data/raw_scan.json against sample-app. Re-derivable from scratch with: make triage-live",
+  "CVE-2020-14343:PyYAML": {
+    "verdict": "act_now",
+    "confidence": "high",
+    "one_line": "FullLoader RCE directly reachable from admin-uploaded tenant configs.",
+    "reasoning": "The queue envelope for the tenant_config job carries the admin console's uploaded config bundle unmodified (base64 for transport); handle_job() passes the decoded bytes straight into load_tenant_config(), which parses them with yaml.load(..., Loader=yaml.FullLoader) at config_service.py:18. CVE-2020-14343 is precisely a bypass of FullLoader's type restrictions via python/object/apply-style tags, giving arbitrary code execution in the worker. The 256 KiB size cap does not constrain tag payloads, and the in-code comment shows FullLoader was adopted for !!merge tag support (TKT-1421), not object constructors, so the dangerous surface is incidental.",
+    "vulnerable_path": "handle_job('tenant_config') -> base64.b64decode(job['config_b64']) -> load_tenant_config() -> yaml.load(bytes, Loader=FullLoader)",
+    "attack_surface": "Any workspace admin (or compromised admin session) uploading a tenant config bundle; executes in the platform worker.",
+    "evidence": [
+      {
+        "file": "sample-app/app/main.py",
+        "line_start": 18,
+        "line_end": 24,
+        "quote": "def handle_job(job: dict) -> dict:\n    kind = job.get(\"kind\", \"\")\n    if kind == \"tenant_config\":\n        # Queue envelope for the admin-console upload: the config bundle\n        # exactly as the console accepted it, base64-encoded for transport.\n        raw = base64.b64decode(job[\"config_b64\"])\n        return {\"ok\": bool(config_service.load_tenant_config(raw))}"
+      },
+      {
+        "file": "sample-app/app/config_service.py",
+        "line_start": 12,
+        "line_end": 18,
+        "quote": "def load_tenant_config(raw: bytes) -> dict:\n    \"\"\"Parse a YAML config bundle uploaded via the admin console.\"\"\"\n    if len(raw) > MAX_CONFIG_BYTES:\n        raise ValueError(\"config bundle exceeds 256 KiB limit\")\n    # FullLoader keeps support for the custom !!merge tags the console emits\n    # (safe_load rejects them). Added 2021-06, see TKT-1421.\n    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)"
+      }
+    ],
+    "recommended_action": "Two-part fix, both required: bump PyYAML to >=6.0 AND replace FullLoader with a SafeLoader subclass that registers an explicit constructor for the console's !!merge tags. The version bump alone leaves the unsafe load semantics in place.",
+    "patch_hint": "-    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)\n+    return yaml.load(raw.decode(\"utf-8\"), Loader=SafeMergeLoader)",
+    "effort": "M"
+  },
+  "CVE-2023-4863:Pillow": {
+    "verdict": "act_now",
+    "confidence": "high",
+    "one_line": "WebP heap overflow; customer avatar uploads are exactly the attack vector.",
+    "reasoning": "image_thumbs.py:13 calls Image.open on customer-uploaded bytes and Pillow 9.0.0 bundles the vulnerable libwebp decoder. A crafted WebP avatar triggers the heap buffer overflow during decode — before any post-upload handling. This CVE was exploited in the wild in 2023; the input is anonymous-customer-facing and the impact is memory corruption in the worker. Strongest finding in the scan alongside PyYAML.",
+    "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> WebP decode",
+    "attack_surface": "Any customer uploading a profile avatar; worker memory corruption.",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 11,
+        "line_end": 18,
+        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+      }
+    ],
+    "recommended_action": "Bump Pillow to current stable (>=12.3.0). One PR closes this and all 20 other Pillow findings, including the three monitor cards.",
+    "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+    "effort": "S"
+  },
+  "CVE-2021-32839:sqlparse": {
+    "verdict": "act_now",
+    "confidence": "high",
+    "one_line": "We pass strip_comments=True — the exact option this ReDoS triggers on.",
+    "reasoning": "query_log.py:16 feeds support-pasted, customer-influenced SQL into sqlparse.format(..., strip_comments=True). CVE-2021-32839 is a ReDoS in the StripComments filter, so the vulnerable code path is exercised verbatim by our call site. A crafted snippet pasted by a social-engineered support engineer stalls the worker. Same one-line bump as every other sqlparse finding.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format(..., strip_comments=True) -> StripComments filter",
+    "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Bump sqlparse to >=0.6.0 — a single PR closes all 9 sqlparse findings in this scan.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2026-84305:sqlparse": {
+    "verdict": "act_now",
+    "confidence": "high",
+    "one_line": "reindent=True routes pasted input through the quadratic reindent path.",
+    "reasoning": "The advisory's trigger is sqlparse.format(sql, reindent=True) with attacker-controlled parenthesized tuple lists. query_log.py:17 passes reindent=True on support-pasted SQL, so the named code path (ReindentFilter._get_offset) runs on semi-trusted input and can burn quadratic CPU per lookup.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format(..., reindent=True) -> ReindentFilter._get_offset()",
+    "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Bump sqlparse to >=0.6.0 — closes all 9 sqlparse findings in one PR.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2026-71491:sqlparse": {
+    "verdict": "act_now",
+    "confidence": "high",
+    "one_line": "strip_comments=True again — the comment-grouping quadratic rescan path.",
+    "reasoning": "Trigger is sqlparse.format(sql, strip_comments=True) causing quadratic rescans in group_comments before the token guard fires. Our call site passes that exact option on operator-pasted input, so worker starvation is reachable from the support console.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format(..., strip_comments=True) -> group_comments",
+    "attack_surface": "Support-console users pasting customer-reported SQL; worker CPU exhaustion.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Bump sqlparse to >=0.6.0 — closes all 9 sqlparse findings in one PR.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2023-30608:sqlparse": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Lexer ReDoS reachable through format(); folds into the same bump.",
+    "reasoning": "The vulnerable regexes sit in sqlparse's lexer and fire through parse/format on crafted input, which our support-console path does pass. Impact is DoS on an internal lookup path, and the 0.4.4 fix is superseded by the same 0.6.0 bump that closes the whole sqlparse cluster — batch it rather than acting out-of-band.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format() -> lexer regexes",
+    "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2026-54284:sqlparse": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Quadratic TokenList flattening via format(); batched with the bump.",
+    "reasoning": "Quadratic CPU through sqlparse.format() on deeply nested SQL. Our input is semi-trusted pasted text, so reachable in principle; DoS-class on an internal tool. Same remediation PR as the rest of the sqlparse findings.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format() -> TokenList flattening",
+    "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2026-59893:sqlparse": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Quadratic delimiter scanning via format(); batched with the bump.",
+    "reasoning": "Unmatched dollar-quote and comment delimiters cause quadratic rescans through format(), reachable from pasted input. DoS-class on the internal lookup path; rides the same 0.6.0 bump.",
+    "vulnerable_path": "normalize_query() -> sqlparse.format() -> lexer per-position loop",
+    "attack_surface": "Support-console users pasting crafted SQL; worker CPU stalls.",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "Include in the sqlparse 0.6.0 bump this sprint.",
+    "patch_hint": "- sqlparse==0.4.1\n+ sqlparse==0.6.0",
+    "effort": "S"
+  },
+  "CVE-2024-4340:sqlparse": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Trigger needs a nested list passed to parse(); we pass a string.",
+    "reasoning": "The DoS requires passing a heavily nested Python list into sqlparse.parse(). Our only call site passes a str (the pasted snippet), so the recursion path never engages.",
+    "vulnerable_path": "not reachable — input type mismatch (list vs str)",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 15,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,"
+      }
+    ],
+    "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59894:sqlparse": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Code injection needs output_format='python'/'php'; we never set it.",
+    "reasoning": "The injection requires format(..., output_format='python' or 'php') so crafted SQL can escape the generated snippet. Our call site sets keyword_case/strip_comments/reindent only — no output_format, no generated source, nothing to inject into.",
+    "vulnerable_path": "not reachable — output_format never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 18,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,\n        strip_comments=True,\n        reindent=True,\n    )"
+      }
+    ],
+    "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "GHSA-27jp-wm6q-gp25:sqlparse": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Trigger is formatting a list of tuples; we format a string.",
+    "reasoning": "The DoS fires when sqlparse.format is given a list of tuples. Our input is a pasted SQL string, so this path is never exercised.",
+    "vulnerable_path": "not reachable — input type mismatch (list of tuples vs str)",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/query_log.py",
+        "line_start": 13,
+        "line_end": 15,
+        "quote": "    formatted = sqlparse.format(\n        raw_query,\n        keyword_case=KEYWORD_CASE,"
+      }
+    ],
+    "recommended_action": "No action; closes with the sqlparse 0.6.0 bump regardless.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2022-22817:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "CRITICAL-rated, but ImageMath.eval is never called in this codebase.",
+    "reasoning": "The RCE requires PIL.ImageMath.eval on attacker-influenced expressions. This service only calls open/convert/thumbnail/save (image_thumbs.py:13-17) — zero references to ImageMath anywhere in the repo. The headline severity does not survive contact with the code.",
+    "vulnerable_path": "not reachable — ImageMath.eval never invoked",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 11,
+        "line_end": 18,
+        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump; revisit if image-expression evaluation is ever added.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2023-50447:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Second ImageMath.eval RCE; same unreachable API.",
+    "reasoning": "Same vulnerable API as CVE-2022-22817 (environment parameter). ImageMath is never imported or called here, so neither variant is reachable from avatar processing.",
+    "vulnerable_path": "not reachable — ImageMath.eval never invoked",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 17,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2023-44271:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "ImageDraw.textlength / truetype fonts — never used here.",
+    "reasoning": "The DoS requires ImageFont.truetype and ImageDraw text operations. This worker only resizes uploaded avatars; no text rendering or font loading exists in the repo.",
+    "vulnerable_path": "not reachable — ImageDraw/ImageFont never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 17,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-28219:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Buffer overflow in _imagingcms.c; ImageCms is never used.",
+    "reasoning": "The overflow lives in the ImageCms color-management module. Nothing in this codebase touches ImageCms — imports are limited to PIL.Image.",
+    "vulnerable_path": "not reachable — ImageCms never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2022-24303:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Temp-path file removal via im.show(); we render to BytesIO.",
+    "reasoning": "The file-deletion bug requires Pillow's temp-file handling around show()/related actions. This worker never calls show() and never writes to the filesystem — thumbnails are produced in memory via BytesIO.",
+    "vulnerable_path": "not reachable — no show(), no temp paths",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 16,
+        "line_end": 18,
+        "quote": "        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-55798:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Windows cmd.exe injection via WindowsViewer; Linux worker, no show().",
+    "reasoning": "The command injection is in WindowsViewer.get_command(), reached through Image.show() on Windows. Workers run Linux and never call show(); the vulnerable class never loads.",
+    "vulnerable_path": "not reachable — Windows-only viewer path, no show()",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 17,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-54058:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "McIdas mmap path requires loading from a filename; we load from BytesIO.",
+    "reasoning": "The OOB read happens on the mmap raw codec path when an uncompressed McIdas AREA image is loaded from a filename. Our avatars are decoded from an in-memory BytesIO, which never takes the mmap-from-filename route, so the precondition cannot hold.",
+    "vulnerable_path": "not reachable — mmap filename path not used (BytesIO input)",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 13,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-54059:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "PCF font DoS; no font files are ever loaded.",
+    "reasoning": "Trigger is loading crafted PCF font data. This service loads no fonts of any kind — only image bytes.",
+    "vulnerable_path": "not reachable — no font loading",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-55379:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "BDF font DoS; no font files are ever loaded.",
+    "reasoning": "Trigger is a crafted BDF font file. No font handling exists in this codebase.",
+    "vulnerable_path": "not reachable — no font loading",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-54060:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "FontFile.compile() memory blowup; no font compilation.",
+    "reasoning": "Trigger is FontFile.compile() assembling per-glyph bitmaps. No fonts are compiled or loaded anywhere in the worker.",
+    "vulnerable_path": "not reachable — no font compilation",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59197:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "RankFilter OOB write; no filters are applied.",
+    "reasoning": "Trigger is ImageFilter.RankFilter with a pathological size. The thumbnail flow applies no filters at all — only convert, thumbnail, save.",
+    "vulnerable_path": "not reachable — ImageFilter never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 17,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59199:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Extreme-coordinate paste/crop/composite; our coordinates are fixed.",
+    "reasoning": "The OOB write needs coordinates near the signed 32-bit limits passed to paste/crop/alpha_composite. The only coordinates this worker ever passes are the constant THUMB_SIZE (256, 256); user input never influences geometry.",
+    "vulnerable_path": "not reachable — coordinates are constants",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 6,
+        "line_end": 6,
+        "quote": "THUMB_SIZE = (256, 256)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-42308:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Integer overflow in font processing; no fonts here.",
+    "reasoning": "Font-family issue; this service never loads or processes font files.",
+    "vulnerable_path": "not reachable — no font loading",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-42310:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "medium",
+    "one_line": "Malicious PDF processing; PDFs never enter this worker.",
+    "reasoning": "The worker's only Pillow entry point is Image.open on avatar bytes and a PNG-only save. Nothing in the job pipeline names PDFs, and the repo has no PDF handling. If PDF rendering is ever added, re-triage this one.",
+    "vulnerable_path": "not reachable — no PDF inputs or outputs in this service",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 17,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump; re-triage if PDF handling is added.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59200:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "medium",
+    "one_line": "Crafted PDF stream DoS; no PDF path in this worker.",
+    "reasoning": "The zlib-decompress blowup lives in PdfParser.PdfStream.decode(). This service never assembles or parses PDFs — avatars in, PNG bytes out — so no crafted stream can reach the parser. Marked medium confidence because the parser is technically present in the installed package; re-triage if PDF output is ever added.",
+    "vulnerable_path": "not reachable — PDF plugin unused (PNG-only output)",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 16,
+        "line_end": 17,
+        "quote": "        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump; re-triage if PDF handling is added.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59198:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "TGA encoder info leak; we only ever save PNG.",
+    "reasoning": "The OOB read is in the TGA RLE encoder. The thumbnail flow saves PNG exclusively (out_format defaults to 'PNG' and callers never override), so the encoder is never invoked.",
+    "vulnerable_path": "not reachable — TGA encoding never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 11,
+        "line_end": 11,
+        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-59205:Pillow": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "ImageCms heap corruption; ImageCms is never used.",
+    "reasoning": "Lives in ImageCms, which this codebase never imports or calls.",
+    "vulnerable_path": "not reachable — ImageCms never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 4,
+        "line_end": 4,
+        "quote": "from PIL import Image"
+      }
+    ],
+    "recommended_action": "No action beyond the Pillow bump.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2022-45198:Pillow": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Highly compressed GIFs reach the decode path from avatar uploads.",
+    "reasoning": "Image.open decodes crafted GIFs during avatar processing, so this DoS is reachable from customer input. Impact is worker resource exhaustion (no memory corruption), partially mitigated by the gateway's 5 MiB upload cap and job-level timeouts. Rides the Pillow bump.",
+    "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> GIF decode",
+    "attack_surface": "Customers uploading avatar images; worker hang/OOM.",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 13,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+      }
+    ],
+    "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+    "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+    "effort": "S"
+  },
+  "CVE-2026-55380:Pillow": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Crafted GD 2.x headers reach allocation via Image.open dispatch.",
+    "reasoning": "GdImageFile._open() reads dimensions from a crafted header without the decompression-bomb check. Image.open dispatches by content signature rather than extension, so an avatar whose bytes claim the GD format reaches this path. DoS-class; rides the Pillow bump.",
+    "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> GdImageFile._open()",
+    "attack_surface": "Customers uploading avatar images; worker memory exhaustion.",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 13,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+      }
+    ],
+    "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+    "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+    "effort": "S"
+  },
+  "CVE-2026-59204:Pillow": {
+    "verdict": "monitor",
+    "confidence": "medium",
+    "one_line": "Crafted JPEG2000 avatars reach the openjpeg decode path.",
+    "reasoning": "JPEG2000 is an Image.open-decodable format, so a crafted JPEG2000 avatar reaches the vulnerable decode path. DoS-class; same Pillow bump closes it.",
+    "vulnerable_path": "make_thumbnail() -> Image.open(BytesIO(user_bytes)) -> JPEG2000 decode",
+    "attack_surface": "Customers uploading avatar images; worker resource exhaustion.",
+    "evidence": [
+      {
+        "file": "sample-app/app/image_thumbs.py",
+        "line_start": 13,
+        "line_end": 13,
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:"
+      }
+    ],
+    "recommended_action": "Include in the Pillow >=12.3.0 bump this sprint.",
+    "patch_hint": "- Pillow==9.0.0\n+ Pillow==12.3.0",
+    "effort": "S"
+  },
+  "CVE-2023-32681:requests": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Proxy-Authorization leak needs a proxy; this service configures none.",
+    "reasoning": "The leak requires requests to use a proxies entry carrying Proxy-Authorization across a 307 redirect. The sole call site (webhook_client.py:14-18) sends a plain JSON POST straight to the mesh — no proxies anywhere in the repo, no auth headers. The module docstring states egress is direct. Revisit the day a corporate egress proxy is adopted.",
+    "vulnerable_path": "not reachable — no proxy configuration exists",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None. Revisit if egress proxying is introduced; fold the requests bump into the next lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-35195:requests": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "verify=False session-reuse bug; we never disable verification.",
+    "reasoning": "The bug lets a Session ignore verify=False on subsequent requests. This service never creates a Session and never touches verify — the single requests.post call uses default verification.",
+    "vulnerable_path": "not reachable — no Sessions, verification always on",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-47081:requests": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": ".netrc credential leak; no netrc auth in play and the URL is fixed.",
+    "reasoning": "The leak needs .netrc-based credentials to be attached and attacker-crafted URLs to redirect them. Our single fixed internal URL carries no netrc-derived auth, and no redirects are followed.",
+    "vulnerable_path": "not reachable — no netrc usage, fixed literal URL",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 9,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\"\nTIMEOUT_S = 5.0"
+      }
+    ],
+    "recommended_action": "None; folds into the lockfile refresh. (Defense-in-depth option: trust_env=False.)",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-25645:requests": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Advisory itself says only direct callers of extract_zipped_paths() are hit.",
+    "reasoning": "The advisory states standard requests usage is unaffected and only applications calling extract_zipped_paths() directly are impacted. This codebase never calls that utility.",
+    "vulnerable_path": "not reachable — extract_zipped_paths() never called",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2021-33503:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "ReDoS parsing untrusted URL authorities; the only URL is a fixed literal.",
+    "reasoning": "urllib3 only parses the authority of the URL it is given. This service hands it one hardcoded internal hostname for its entire lifetime — no attacker-controlled URL ever reaches the parser.",
+    "vulnerable_path": "not reachable — URL is a fixed literal",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "None out-of-band; batch-upgrade urllib3 in the next lockfile refresh. Revisit if the service ever fetches external URLs.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2023-43804:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Cross-origin redirect header leak; we send no cookies or auth headers.",
+    "reasoning": "The leak forwards Cookie headers across origins on redirect. Our settlement POST sends no cookies, no Proxy-Authorization, no auth headers — just a payment-id JSON body — and the fixed internal peer does not redirect cross-origin.",
+    "vulnerable_path": "not reachable — no credentials in flight, no cross-origin redirects",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-37891:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Proxy-Authorization not stripped on cross-origin redirect; no proxy auth exists.",
+    "reasoning": "Same redirect-leak family as CVE-2023-43804 but for Proxy-Authorization. No proxies are configured, so the header is never present to leak.",
+    "vulnerable_path": "not reachable — no proxy authentication in use",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 3,
+        "line_end": 4,
+        "quote": "Outbound HTTPS only. Egress goes straight to the internal service mesh;\nno corporate proxy is configured for this service."
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2023-45803:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Body re-sent after 303 redirect; no redirects, non-sensitive body.",
+    "reasoning": "The settlement flow does not follow redirects, and the request body carries only a payment id and amount — no credentials. Even in a hypothetical redirect, there is nothing sensitive to forward.",
+    "vulnerable_path": "not reachable — no redirects in the settlement flow",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2025-66418:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Decompression-bomb chain needs a malicious server; our only peer is the mesh.",
+    "reasoning": "Every decompression-bomb variant in urllib3 requires a hostile HTTP server. This service talks to exactly one TLS peer — the internal ledger on the service mesh — which sits outside this service's threat model. If the mesh is compromised, a scanner finding is the least of our problems.",
+    "vulnerable_path": "not reachable — sole peer is a trusted internal service",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh. Revisit before this service ever calls an external URL.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2025-66471:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Streaming-API decompression issue; we buffer and never stream.",
+    "reasoning": "The vulnerable path is urllib3's streaming API, which this service never uses — responses are read whole from a trusted internal peer. Same trust-model reasoning as CVE-2025-66418.",
+    "vulnerable_path": "not reachable — streaming API unused, trusted peer",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-21441:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Redirect-following decompression bypass; no redirects, no streaming.",
+    "reasoning": "Trigger requires following redirect responses through the streaming API. This service does neither — fixed peer, no redirects, buffered reads.",
+    "vulnerable_path": "not reachable — no redirects, streaming unused",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-44431:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Low-level ProxyManager redirect leak; we use the high-level API only.",
+    "reasoning": "Trigger is ProxyManager.connection_from_url().urlopen(..., assert_same_host=False) on the low-level API. This service goes through requests' high-level post() and instantiates no ProxyManager.",
+    "vulnerable_path": "not reachable — ProxyManager never used",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-97687:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "HTTPS-proxy TLS interception issue; no proxy exists.",
+    "reasoning": "The misconfiguration involves proxy TLS handling. No proxy is configured for this service, direct mesh egress only.",
+    "vulnerable_path": "not reachable — no proxy configuration",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 3,
+        "line_end": 4,
+        "quote": "Outbound HTTPS only. Egress goes straight to the internal service mesh;\nno corporate proxy is configured for this service."
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-97689:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Chunked-parser memory exhaustion needs a malicious server; trusted peer.",
+    "reasoning": "A hostile server sending an unterminated chunk-size line triggers the unbounded allocation. The only server this client talks to is the internal ledger on the mesh.",
+    "vulnerable_path": "not reachable — sole peer is a trusted internal service",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2025-50181:urllib3": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Redirects not disabled when retries are disabled; no redirects anyway.",
+    "reasoning": "The interplay bug matters only for flows that can be redirected. The settlement POST targets a fixed internal endpoint that does not redirect, and the code never follows one.",
+    "vulnerable_path": "not reachable — no redirects in this flow",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 14,
+        "line_end": 18,
+        "quote": "    response = requests.post(\n        LEDGER_URL,\n        json={\"payment_id\": payment_id, \"amount_cents\": amount_cents},\n        timeout=TIMEOUT_S,\n    )"
+      }
+    ],
+    "recommended_action": "None out-of-band; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2023-37920:certifi": {
+    "verdict": "dismiss",
+    "confidence": "medium",
+    "one_line": "Untrusted e-Tugra root in the store; no external TLS peers to validate.",
+    "reasoning": "Trust-store hygiene findings matter when the store validates external endpoints. The only TLS peer is the internal ledger on the mesh; an untrusted root could only mis-validate connections this service never makes.",
+    "vulnerable_path": "not reachable in practice — no external TLS validation",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "Fold the certifi bump into the lockfile refresh; revisit before any public egress ships.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2022-23491:certifi": {
+    "verdict": "dismiss",
+    "confidence": "medium",
+    "one_line": "Untrusted GLOBALTRUST roots; same external-validation reasoning.",
+    "reasoning": "Same class as CVE-2023-37920: an untrusted root only matters for endpoints validated against certifi, and this service validates one internal mesh host.",
+    "vulnerable_path": "not reachable in practice — no external TLS validation",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "Fold the certifi bump into the lockfile refresh; revisit before any public egress ships.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-39689:certifi": {
+    "verdict": "dismiss",
+    "confidence": "medium",
+    "one_line": "GLOBALTRUST root removal (LOW); same external-validation reasoning.",
+    "reasoning": "Same trust-store class as the other certifi findings; no external TLS validation happens in this service.",
+    "vulnerable_path": "not reachable in practice — no external TLS validation",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "Fold the certifi bump into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2024-3651:idna": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "ReDoS on crafted hostnames; the only hostname is a fixed literal.",
+    "reasoning": "idna only parses what it is handed. The sole hostname ever parsed in this service is the hardcoded internal ledger host — no attacker-controlled DNS names enter.",
+    "vulnerable_path": "not reachable — hostname is a fixed literal",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "None; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2026-45409:idna": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "DoS via long crafted inputs; no attacker-controlled hostnames.",
+    "reasoning": "Same reachability question as CVE-2024-3651 and the same answer: the only input idna ever sees is the fixed internal hostname.",
+    "vulnerable_path": "not reachable — hostname is a fixed literal",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/app/webhook_client.py",
+        "line_start": 8,
+        "line_end": 8,
+        "quote": "LEDGER_URL = \"https://ledger.internal.northgate.io/v1/settlements\""
+      }
+    ],
+    "recommended_action": "None; folds into the lockfile refresh.",
+    "patch_hint": "none",
+    "effort": "S"
+  },
+  "CVE-2020-28493:Jinja2": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Jinja2 is never imported — dead pin; delete it instead of patching it.",
+    "reasoning": "Zero references to jinja anywhere in app/ (verified by search). The pin is legacy from the retired admin console (requirements.txt:10-11). Not reachable — and the better remediation is removal: deleting the pin (with MarkupSafe) permanently clears 5 findings from every future scan and shrinks the worker image.",
+    "vulnerable_path": "not reachable — dead dependency",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/requirements.txt",
+        "line_start": 10,
+        "line_end": 12,
+        "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+      }
+    ],
+    "recommended_action": "Remove the Jinja2 and MarkupSafe pins in the next lockfile refresh rather than upgrading.",
+    "patch_hint": "- Jinja2==2.11.2\n- MarkupSafe==1.1.1",
+    "effort": "S"
+  },
+  "CVE-2024-22195:Jinja2": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Dead dependency — Jinja2 is never imported.",
+    "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+    "vulnerable_path": "not reachable — dead dependency",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/requirements.txt",
+        "line_start": 10,
+        "line_end": 12,
+        "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+      }
+    ],
+    "recommended_action": "Remove the pin in the next lockfile refresh.",
+    "patch_hint": "- Jinja2==2.11.2",
+    "effort": "S"
+  },
+  "CVE-2024-34064:Jinja2": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Dead dependency — Jinja2 is never imported.",
+    "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+    "vulnerable_path": "not reachable — dead dependency",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/requirements.txt",
+        "line_start": 10,
+        "line_end": 12,
+        "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+      }
+    ],
+    "recommended_action": "Remove the pin in the next lockfile refresh.",
+    "patch_hint": "- Jinja2==2.11.2",
+    "effort": "S"
+  },
+  "CVE-2024-56326:Jinja2": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Dead dependency — Jinja2 is never imported.",
+    "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+    "vulnerable_path": "not reachable — dead dependency",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/requirements.txt",
+        "line_start": 10,
+        "line_end": 12,
+        "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+      }
+    ],
+    "recommended_action": "Remove the pin in the next lockfile refresh.",
+    "patch_hint": "- Jinja2==2.11.2",
+    "effort": "S"
+  },
+  "CVE-2025-27516:Jinja2": {
+    "verdict": "dismiss",
+    "confidence": "high",
+    "one_line": "Dead dependency — Jinja2 is never imported.",
+    "reasoning": "Same dead-pin analysis as CVE-2020-28493: no imports exist anywhere in the application code.",
+    "vulnerable_path": "not reachable — dead dependency",
+    "attack_surface": "none",
+    "evidence": [
+      {
+        "file": "sample-app/requirements.txt",
+        "line_start": 10,
+        "line_end": 12,
+        "quote": "# legacy: html templates for the retired admin console (pin never cleaned up)\nJinja2==2.11.2\nMarkupSafe==1.1.1"
+      }
+    ],
+    "recommended_action": "Remove the pin in the next lockfile refresh.",
+    "patch_hint": "- Jinja2==2.11.2",
+    "effort": "S"
+  }
+}
