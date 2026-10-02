@@ -8,7 +8,8 @@ For the given git ref this script:
   4. rescans with Trivy and diffs against the original scan,
   5. writes data/fix_verification.json and exits non-zero if the gate fails.
 
-Gate: every test passes, no act_now finding survives, no new findings appear.
+Gate: every test passes, no act_now finding survives for a package the ref
+changes, and no new findings appear.
 
     python3 scripts/verify_fixes.py                          # fix branch vs main
     python3 scripts/verify_fixes.py --ref HEAD --base origin/main   # in CI
@@ -211,7 +212,10 @@ def main() -> int:
         reasons.append("no tests found in the fix branch")
     if failing:
         reasons.append(f"failing test modules: {', '.join(failing)}")
-    surviving = sorted(act_now & after)
+    # Only packages this ref changes are in scope, so a single-package fix PR
+    # isn't blocked by act_now findings that belong to other fixes.
+    changed = {f["package"].lower() for f in fixes}
+    surviving = sorted(k for k in act_now & after if k.split(":", 1)[1].lower() in changed)
     if surviving:
         reasons.append(f"act_now findings still present: {', '.join(surviving)}")
     if introduced:

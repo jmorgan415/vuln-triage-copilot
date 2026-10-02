@@ -3,13 +3,13 @@ name: Verify Fixes
 # Every remediation PR must prove it is safe before review: pinned deps
 # install cleanly, each fix's tests pass, and a rescan shows act-now
 # findings closed with nothing new introduced.
+#
+# Runs on every PR (no paths filter) because it is a required check: a
+# filtered-out required check never reports and blocks the merge forever.
+# PRs that don't touch the service pass through the "changes" step.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "sample-app/**"
-      - "scripts/verify_fixes.py"
-      - ".github/workflows/verify-fixes.yml"
 
 permissions:
   contents: read
@@ -28,12 +28,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect service changes
+        id: changes
+        run: |
+          if git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- sample-app scripts/verify_fixes.py; then
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No changes to sample-app; nothing to verify." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up the service's pinned Python
+        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-python@v6
         with:
           python-version-file: sample-app/.python-version
 
       - name: Install Trivy (pinned, checksum-verified)
+        if: steps.changes.outputs.relevant == 'true'
         run: |
           tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
           curl -sSfL -o "$tarball" \
@@ -44,6 +56,7 @@ jobs:
           trivy --version
 
       - name: Verify fixes
+        if: steps.changes.outputs.relevant == 'true'
         run: |
           python scripts/verify_fixes.py \
             --ref HEAD \
@@ -52,7 +65,7 @@ jobs:
             --out verification.json
 
       - name: Summarize
-        if: always()
+        if: always() && steps.changes.outputs.relevant == 'true'
         run: |
           [ -f verification.json ] || { echo "No verification report produced." >> "$GITHUB_STEP_SUMMARY"; exit 0; }
           python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"

@@ -37,7 +37,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 11,
         "line_end": 18,
-        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
       }
     ],
     "recommended_action": "Bump Pillow to current stable (>=12.3.0). One PR closes this and all 20 other Pillow findings, including the three monitor cards.",
@@ -227,7 +227,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 11,
         "line_end": 18,
-        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
+        "quote": "def make_thumbnail(image_bytes: bytes, out_format: str = \"PNG\") -> bytes:\n    \"\"\"Produce a square thumbnail from a customer-uploaded avatar.\"\"\"\n    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)\n        return buf.getvalue()"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump; revisit if image-expression evaluation is ever added.",
@@ -246,7 +246,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 13,
         "line_end": 17,
-        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump.",
@@ -265,7 +265,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 13,
         "line_end": 17,
-        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump.",
@@ -322,7 +322,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 13,
         "line_end": 17,
-        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump.",
@@ -417,7 +417,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 13,
         "line_end": 17,
-        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump.",
@@ -474,7 +474,7 @@
         "file": "sample-app/app/image_thumbs.py",
         "line_start": 13,
         "line_end": 17,
-        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
+        "quote": "    with Image.open(io.BytesIO(image_bytes)) as img:\n        img = img.convert(\"RGBA\")\n        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)\n        buf = io.BytesIO()\n        img.save(buf, format=out_format)"
       }
     ],
     "recommended_action": "No action beyond the Pillow bump; re-triage if PDF handling is added.",

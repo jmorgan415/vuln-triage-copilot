@@ -1,0 +1,48 @@
+name: CI Steward
+
+# When Verify Fixes fails on a fix PR, Droid reads the failing logs and
+# commits a focused fix to the PR branch. Guardrails (fix scope, protected
+# paths, attempt budget) live in .github/droid-ci.yml, read from main only.
+on:
+  workflow_run:
+    workflows: ["Verify Fixes"]
+    types: [completed]
+
+permissions:
+  # actions: write covers reading failed job logs and rerunning jobs, which
+  # always go through the workflow token rather than the app token.
+  actions: write
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  ci-steward:
+    # Same-repo PR runs only: workflow_run executes with write tokens and
+    # secrets, so a fork's commit must never be checked out here.
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    concurrency:
+      group: ci-steward-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      # No github_token on purpose: the action uses the Factory Droid App
+      # token, and only app-token pushes start a fresh Verify Fixes run.
+      - name: Run CI Steward
+        uses: Factory-AI/droid-action@main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          ci_steward: "true"
+          auto_fix: "true"
+          # Verify Fixes failures are deterministic; retrying wastes a run.
+          retry_mode: "off"
