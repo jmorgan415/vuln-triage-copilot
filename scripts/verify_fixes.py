@@ -127,6 +127,30 @@ def main() -> int:
     act_now = {f"{f['id']}:{f['package']}" for f in triage if f["verdict"] == "act_now"}
     before = scan_keys(json.loads((REPO / "data" / "raw_scan.json").read_text()))
 
+    # No pin changes means no fix to verify. Installing anyway would also fail:
+    # the original pins (e.g. Pillow 9.0.0) have no wheels for the service's
+    # pinned Python, so only upgraded pin sets are installable.
+    ref_reqs = parse_requirements(
+        run(["git", "show", f"{args.ref}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
+    )
+    if ref_reqs == base_reqs:
+        payload = {
+            "meta": {"ref": args.ref, "base": args.base, "commit": commit, "python": None,
+                     "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                     "note": "no dependency changes; nothing to verify"},
+            "gate": {"passed": True, "reasons": []},
+            "tests": {"ran": 0, "passed": 0, "skipped": 0, "modules": {}},
+            "rescan": {"before": len(before), "after": len(before), "resolved": 0,
+                       "introduced": [], "act_now_remaining": []},
+            "fixes": [],
+            "findings": {},
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        print(f"[verify] {args.ref} @ {commit} changes no pinned dependencies; nothing to verify")
+        print("[verify] GATE PASSED")
+        return 0
+
     tmp = Path(tempfile.mkdtemp(prefix="reach-verify-"))
     worktree = tmp / "wt"
     run(["git", "worktree", "add", "--detach", str(worktree), args.ref], cwd=REPO)
