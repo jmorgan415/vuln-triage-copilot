@@ -7,9 +7,15 @@ name: Verify Fixes
 # Runs on every PR (no paths filter) because it is a required check: a
 # filtered-out required check never reports and blocks the merge forever.
 # PRs that don't touch the service pass through the "changes" step.
+#
+# Also runs on pushes to main: CI Steward only auto-fixes a PR when this
+# workflow passed on the PR's base commit, which proves the PR caused the
+# failure.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -30,8 +36,19 @@ jobs:
 
       - name: Detect service changes
         id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- sample-app scripts/verify_fixes.py; then
+          if [ "$EVENT" = "push" ]; then
+            base="$BEFORE"; range="$BEFORE..HEAD"
+          else
+            base="origin/$BASE_REF"; range="origin/$BASE_REF...HEAD"
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          if [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || git diff --quiet "$range" -- sample-app scripts/verify_fixes.py; then
             echo "relevant=false" >> "$GITHUB_OUTPUT"
             echo "No changes to sample-app; nothing to verify." >> "$GITHUB_STEP_SUMMARY"
           else
@@ -60,7 +77,7 @@ jobs:
         run: |
           python scripts/verify_fixes.py \
             --ref HEAD \
-            --base "origin/${{ github.base_ref }}" \
+            --base "${{ steps.changes.outputs.base }}" \
             --python "$(command -v python)" \
             --out verification.json
 
