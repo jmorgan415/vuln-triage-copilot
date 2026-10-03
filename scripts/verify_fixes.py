@@ -71,6 +71,19 @@ def import_name(dist: str) -> str:
     return IMPORT_NAMES.get(dist, dist.replace("-", "_"))
 
 
+def resolve_ref(ref: str) -> str:
+    """Accept a local ref or fall back to its remote-tracking counterpart.
+
+    A fresh clone or CI checkout often has origin/main without a local main.
+    """
+    for candidate in (ref, f"origin/{ref}"):
+        exists = run(["git", "rev-parse", "--verify", "--quiet", candidate],
+                     cwd=REPO, check=False)
+        if exists.returncode == 0:
+            return candidate
+    raise SystemExit(f"[verify] unknown git ref: {ref}")
+
+
 def app_modules_importing(app_dir: Path, mod: str) -> list[str]:
     pattern = re.compile(rf"^\s*(?:import|from)\s+{re.escape(mod)}\b", re.M)
     return sorted(p.stem for p in (app_dir / "app").glob("*.py") if pattern.search(p.read_text()))
@@ -119,25 +132,25 @@ def main() -> int:
     if not shutil.which("trivy"):
         raise SystemExit("[verify] trivy not found on PATH")
 
+    args.ref, args.base = resolve_ref(args.ref), resolve_ref(args.base)
     commit = run(["git", "rev-parse", "--short", args.ref], cwd=REPO).stdout.strip()
-    base_reqs = parse_requirements(
-        run(["git", "show", f"{args.base}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
-    )
     triage = json.loads((REPO / "data" / "triage_results.json").read_text())["findings"]
     act_now = {f"{f['id']}:{f['package']}" for f in triage if f["verdict"] == "act_now"}
     before = scan_keys(json.loads((REPO / "data" / "raw_scan.json").read_text()))
 
-    # No pin changes means no fix to verify. Installing anyway would also fail:
-    # the original pins (e.g. Pillow 9.0.0) have no wheels for the service's
-    # pinned Python, so only upgraded pin sets are installable.
-    ref_reqs = parse_requirements(
-        run(["git", "show", f"{args.ref}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
-    )
-    if ref_reqs == base_reqs:
+    # A ref that changes nothing under the service has no fix to verify, and
+    # building a venv to prove that would fail anyway: the original pins (e.g.
+    # Pillow 9.0.0) have no wheels for the service's pinned Python.
+    # The test is the service diff, not a comparison of parsed pins, so a
+    # dependency change this script cannot parse (a pip -r include, an
+    # unpinned requirement) still gets verified instead of passing silently.
+    service_diff = run(["git", "diff", "--quiet", args.base, args.ref, "--", APP_DIR],
+                       cwd=REPO, check=False)
+    if service_diff.returncode == 0:
         payload = {
             "meta": {"ref": args.ref, "base": args.base, "commit": commit, "python": None,
                      "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                     "note": "no dependency changes; nothing to verify"},
+                     "note": "no changes under sample-app; nothing to verify"},
             "gate": {"passed": True, "reasons": []},
             "tests": {"ran": 0, "passed": 0, "skipped": 0, "modules": {}},
             "rescan": {"before": len(before), "after": len(before), "resolved": 0,
@@ -147,9 +160,13 @@ def main() -> int:
         }
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(payload, indent=2) + "\n")
-        print(f"[verify] {args.ref} @ {commit} changes no pinned dependencies; nothing to verify")
+        print(f"[verify] {args.ref} @ {commit} changes nothing under {APP_DIR}; nothing to verify")
         print("[verify] GATE PASSED")
         return 0
+
+    base_reqs = parse_requirements(
+        run(["git", "show", f"{args.base}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
+    )
 
     tmp = Path(tempfile.mkdtemp(prefix="reach-verify-"))
     worktree = tmp / "wt"

@@ -44,13 +44,17 @@ def ci_run(sha: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pr", type=int, required=True)
-    ap.add_argument("--base", default="main", help="ref with the original pins")
+    ap.add_argument("--base", default="main", help="ref with the original pins "
+                    "(falls back to origin/main when there is no local branch)")
     ap.add_argument("--out", type=Path, default=REPO / "data" / "pr_history.json")
     args = ap.parse_args()
 
     pr = json.loads(sh("gh", "pr", "view", str(args.pr), "--json",
                        "number,title,url,headRefName,commits"))
-    sh("git", "fetch", "-q", "origin", pr["headRefName"])
+    # refs/pull/N/head exists for fork PRs too, and for a deleted head branch,
+    # where the head repository's branch name either is absent from origin or
+    # names an unrelated branch of the same name.
+    sh("git", "fetch", "-q", "origin", f"refs/pull/{args.pr}/head")
 
     steps = []
     for c in pr["commits"]:
