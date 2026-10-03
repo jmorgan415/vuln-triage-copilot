@@ -1,0 +1,82 @@
+[
+  {
+    "pr": 3,
+    "title": "fix(sample-app): bump Pillow 9.0.0 -> 12.3.0 (CVE-2023-4863 + 20 more)",
+    "url": "https://github.com/jmorgan415/vuln-triage-copilot/pull/3",
+    "steps": [
+      {
+        "commit": "fa441ea",
+        "headline": "fix(sample-app): bump Pillow 9.0.0 -> 12.3.0 (CVE-2023-4863 + 20 more)",
+        "author": "jmorgan415",
+        "app_diff": [],
+        "ci": {
+          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37094932249",
+          "conclusion": "failure"
+        },
+        "gate": {
+          "passed": false,
+          "reasons": [
+            "failing test modules: test_image_thumbs.py"
+          ]
+        },
+        "python": "3.11.14",
+        "tests": {
+          "ran": 5,
+          "passed": 1,
+          "errors": [
+            "AttributeError: module 'PIL.Image' has no attribute 'ANTIALIAS'"
+          ]
+        },
+        "rescan": {
+          "before": 56,
+          "after": 35,
+          "introduced": []
+        },
+        "fixes": [
+          {
+            "package": "Pillow",
+            "from": "9.0.0",
+            "to": "12.3.0",
+            "status": "tests_failed"
+          }
+        ]
+      },
+      {
+        "commit": "2a7e52a",
+        "headline": "fix(ci): use Pillow 12 resampling enum for thumbnails",
+        "author": "factory-droid[bot]",
+        "app_diff": [
+          "-        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)",
+          "+        img.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)"
+        ],
+        "ci": {
+          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37096034884",
+          "conclusion": "success"
+        },
+        "gate": {
+          "passed": true,
+          "reasons": []
+        },
+        "python": "3.11.14",
+        "tests": {
+          "ran": 5,
+          "passed": 5,
+          "errors": []
+        },
+        "rescan": {
+          "before": 56,
+          "after": 35,
+          "introduced": []
+        },
+        "fixes": [
+          {
+            "package": "Pillow",
+            "from": "9.0.0",
+            "to": "12.3.0",
+            "status": "verified"
+          }
+        ]
+      }
+    ]
+  }
+]

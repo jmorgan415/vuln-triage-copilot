@@ -90,6 +90,9 @@ jobs:
           v = json.load(open("verification.json"))
           g, t, r = v["gate"], v["tests"], v["rescan"]
           print(f"## Fix verification: {'PASSED' if g['passed'] else 'FAILED'}")
+          if v["meta"].get("note"):
+              print(v["meta"]["note"])
+              raise SystemExit(0)
           print(f"Python {v['meta']['python']} · tests {t['passed']}/{t['ran']} passed · "
                 f"findings {r['before']} -> {r['after']} · {len(r['introduced'])} introduced\n")
           print("| Package | Change | Tests | Findings closed | Status |")

@@ -43,6 +43,7 @@ print(json.dumps({
     "errors": len(result.errors),
     "skipped": len(result.skipped),
     "failed_tests": [t.id() for t, _ in result.failures + result.errors],
+    "error_lines": sorted({tb.strip().splitlines()[-1] for _, tb in result.failures + result.errors}),
     "log_tail": stream.getvalue()[-2000:],
 }))
 """
@@ -68,6 +69,19 @@ def parse_requirements(text: str) -> dict[str, tuple[str, str]]:
 
 def import_name(dist: str) -> str:
     return IMPORT_NAMES.get(dist, dist.replace("-", "_"))
+
+
+def resolve_ref(ref: str) -> str:
+    """Accept a local ref or fall back to its remote-tracking counterpart.
+
+    A fresh clone or CI checkout often has origin/main without a local main.
+    """
+    for candidate in (ref, f"origin/{ref}"):
+        exists = run(["git", "rev-parse", "--verify", "--quiet", candidate],
+                     cwd=REPO, check=False)
+        if exists.returncode == 0:
+            return candidate
+    raise SystemExit(f"[verify] unknown git ref: {ref}")
 
 
 def app_modules_importing(app_dir: Path, mod: str) -> list[str]:
@@ -118,13 +132,41 @@ def main() -> int:
     if not shutil.which("trivy"):
         raise SystemExit("[verify] trivy not found on PATH")
 
+    args.ref, args.base = resolve_ref(args.ref), resolve_ref(args.base)
     commit = run(["git", "rev-parse", "--short", args.ref], cwd=REPO).stdout.strip()
-    base_reqs = parse_requirements(
-        run(["git", "show", f"{args.base}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
-    )
     triage = json.loads((REPO / "data" / "triage_results.json").read_text())["findings"]
     act_now = {f"{f['id']}:{f['package']}" for f in triage if f["verdict"] == "act_now"}
     before = scan_keys(json.loads((REPO / "data" / "raw_scan.json").read_text()))
+
+    # A ref that changes nothing under the service has no fix to verify, and
+    # building a venv to prove that would fail anyway: the original pins (e.g.
+    # Pillow 9.0.0) have no wheels for the service's pinned Python.
+    # The test is the service diff, not a comparison of parsed pins, so a
+    # dependency change this script cannot parse (a pip -r include, an
+    # unpinned requirement) still gets verified instead of passing silently.
+    service_diff = run(["git", "diff", "--quiet", args.base, args.ref, "--", APP_DIR],
+                       cwd=REPO, check=False)
+    if service_diff.returncode == 0:
+        payload = {
+            "meta": {"ref": args.ref, "base": args.base, "commit": commit, "python": None,
+                     "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                     "note": "no changes under sample-app; nothing to verify"},
+            "gate": {"passed": True, "reasons": []},
+            "tests": {"ran": 0, "passed": 0, "skipped": 0, "modules": {}},
+            "rescan": {"before": len(before), "after": len(before), "resolved": 0,
+                       "introduced": [], "act_now_remaining": []},
+            "fixes": [],
+            "findings": {},
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        print(f"[verify] {args.ref} @ {commit} changes nothing under {APP_DIR}; nothing to verify")
+        print("[verify] GATE PASSED")
+        return 0
+
+    base_reqs = parse_requirements(
+        run(["git", "show", f"{args.base}:{APP_DIR}/requirements.txt"], cwd=REPO).stdout
+    )
 
     tmp = Path(tempfile.mkdtemp(prefix="reach-verify-"))
     worktree = tmp / "wt"
@@ -151,7 +193,11 @@ def main() -> int:
                 res = json.loads(proc.stdout.strip().splitlines()[-1])
             except (IndexError, json.JSONDecodeError):
                 res = {"ran": 0, "failures": 0, "errors": 1, "skipped": 0,
-                       "failed_tests": [tf.name], "log_tail": proc.stderr[-2000:]}
+                       "failed_tests": [tf.name], "error_lines": [],
+                       "log_tail": proc.stderr[-2000:]}
+            # Reports get committed; keep throwaway checkout paths out of them.
+            for prefix in {str(app_dir), str(app_dir.resolve())}:
+                res["log_tail"] = res["log_tail"].replace(prefix + "/", "")
             res["passed"] = res["ran"] - res["failures"] - res["errors"] - res["skipped"]
             res["ok"] = res["ran"] > 0 and not res["failures"] and not res["errors"]
             tests[tf.name] = res
@@ -208,7 +254,7 @@ def main() -> int:
 
     reasons = []
     failing = [t for t, r in tests.items() if not r["ok"]]
-    if not tests:
+    if fixes and not tests:
         reasons.append("no tests found in the fix branch")
     if failing:
         reasons.append(f"failing test modules: {', '.join(failing)}")

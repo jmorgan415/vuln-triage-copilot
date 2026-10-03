@@ -1,7 +1,7 @@
 # Reach — vulnerability triage copilot demo harness
 # Persona: security engineer at Northgate Financial
 
-.PHONY: scan triage triage-live serve validate verify demo
+.PHONY: scan triage triage-live serve validate verify history demo
 
 # Produce raw scanner output from the sample app's pinned deps.
 scan:
@@ -27,6 +27,11 @@ validate:
 # Trivy rescan. Writes data/fix_verification.json for the dashboard.
 verify:
 	python3 scripts/verify_fixes.py
+
+# Re-verify each commit of a fix PR (red bump -> Droid repair) for the
+# dashboard's "Fix PR history" panel. Usage: make history PR=3
+history:
+	python3 scripts/pr_history.py --pr $(PR)
 
 demo: triage
 	@echo "Run 'make serve' in another terminal, then open http://localhost:8765/dashboard/"

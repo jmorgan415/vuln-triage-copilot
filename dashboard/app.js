@@ -1,8 +1,9 @@
 // Reach — vulnerability triage copilot dashboard.
 // Data contract: data/triage_results.json written by triage/run_triage.py,
-// plus optional data/fix_verification.json written by scripts/verify_fixes.py.
+// plus optional data/fix_verification.json written by scripts/verify_fixes.py
+// and data/pr_history.json written by scripts/pr_history.py.
 
-const state = { data: null, verify: null, noiseView: false, collapsed: {} };
+const state = { data: null, verify: null, history: [], noiseView: false, collapsed: {} };
 
 const FIX_STATUS = {
   verified: { label: "fix verified", cls: "ok" },
@@ -45,8 +46,15 @@ async function boot() {
   } catch (_) {
     state.verify = null;
   }
+  try {
+    const hres = await fetch("../data/pr_history.json");
+    if (hres.ok) state.history = await hres.json();
+  } catch (_) {
+    state.history = [];
+  }
   renderMetrics();
   renderVerify();
+  renderHistory();
   renderBoard();
   renderNoise();
   renderMeta();
@@ -140,6 +148,61 @@ function verifyHtml(f) {
       <span class="k">Verified on</span><span>${esc(state.verify.meta.ref)} @ ${esc(state.verify.meta.commit)}, Python ${esc(state.verify.meta.python)}</span>
     </div>
   `;
+}
+
+function stepResult(s) {
+  const ok = s.gate.passed;
+  return `${ok ? "✓" : "✗"} tests ${s.tests.passed}/${s.tests.ran} · findings ${s.rescan.before} → ${s.rescan.after} · ${s.rescan.introduced.length} introduced`;
+}
+
+function stepHtml(s) {
+  const ok = s.gate.passed;
+  const fixed = s.app_diff.length > 0;
+  return `
+    <li class="step ${ok ? "ok" : "bad"}">
+      <div class="s-label">${fixed ? "Fix committed" : "Change pushed"} · <code>${esc(s.commit)}</code> · ${esc(s.author)}</div>
+      <div class="s-head">${esc(s.headline)}</div>
+      ${fixed ? patchHtml(s.app_diff.join("\n")) : ""}
+      <div class="s-result">${esc(stepResult(s))}</div>
+      ${s.tests.errors.map((e) => `<div class="s-error">${esc(e)}</div>`).join("")}
+      <div class="s-gate">${ok ? "Gate passed, merge unblocked" : "Gate failed, merge blocked"}
+        ${s.ci?.url ? ` · <a href="${esc(s.ci.url)}" target="_blank" rel="noopener">CI run</a>` : ""}</div>
+    </li>
+  `;
+}
+
+function renderHistory() {
+  const el = document.getElementById("history");
+  if (!state.history.length) return;
+  el.hidden = false;
+  el.innerHTML = state.history.map((h) => `
+    <div class="pr-history">
+      <div class="pr-head">
+        <span class="pr-kicker">Fix PR history</span>
+        <a href="${esc(h.url)}" target="_blank" rel="noopener">PR #${h.pr}</a>
+        <span class="pr-title">${esc(h.title)}</span>
+      </div>
+      <ol class="steps">${h.steps.map(stepHtml).join('<li class="arrow" aria-hidden="true">→</li>')}</ol>
+    </div>
+  `).join("");
+}
+
+function historyHtml(f) {
+  const prs = state.history.filter((h) =>
+    h.steps.some((s) => s.fixes.some((x) => x.package === f.package))
+  );
+  if (!prs.length) return "";
+  return prs.map((h) => `
+    <h4>PR #${h.pr} history</h4>
+    <ul class="drawer-steps">
+      ${h.steps.map((s) => `
+        <li class="${s.gate.passed ? "ok" : "bad"}">
+          <code>${esc(s.commit)}</code> ${esc(s.author)}: ${esc(stepResult(s))}
+          ${s.tests.errors.map((e) => `<div class="s-error">${esc(e)}</div>`).join("")}
+        </li>`).join("")}
+    </ul>
+    <p><a href="${esc(h.url)}" target="_blank" rel="noopener">Open PR #${h.pr}</a></p>
+  `).join("");
 }
 
 function cardHtml(f) {
@@ -259,6 +322,7 @@ function openDrawer(f) {
     <h4>Patch hint</h4>
     ${patchHtml(f.patch_hint)}
     ${verifyHtml(f)}
+    ${historyHtml(f)}
     <h4>Advisory</h4>
     <p><a href="${esc(f.primary_url)}" target="_blank" rel="noopener">${esc(f.primary_url || f.id)}</a></p>
   `;

@@ -147,7 +147,8 @@ with, not a number we invented in a deck."
 
 ## Beat 5b — When a fix breaks (3 min; take it from Beat 4)
 
-Open PR #3 ("bump Pillow 9.0.0 -> 12.3.0") and walk its history top to
+Start on the dashboard's "Fix PR history" panel (red bump -> Droid fix ->
+green), then open PR #3 ("bump Pillow 9.0.0 -> 12.3.0") and walk its history top to
 bottom. Don't trigger anything live; the history is the demo.
 
 1. **The bump.** "This is the PR a dependency bot opens: one version
