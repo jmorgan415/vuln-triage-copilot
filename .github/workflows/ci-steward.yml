@@ -36,6 +36,12 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
+      # Runners have no git identity, so fix commits fail without this.
+      - name: Commit as the Factory Droid bot
+        run: |
+          git config --global user.name "factory-droid[bot]"
+          git config --global user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+
       # No github_token on purpose: the action uses the Factory Droid App
       # token, and only app-token pushes start a fresh Verify Fixes run.
       - name: Run CI Steward
