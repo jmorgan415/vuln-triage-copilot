@@ -90,6 +90,14 @@ Headline numbers (all computed by the pipeline, not hand-waved):
   act-now findings gone with nothing new introduced (56 → 20, 0 new). The
   gate was checked against a deliberately regressed sqlparse pin and failed
   as intended. The dashboard shows the result on every affected card.
+- `verify` is a required check on `main`, so a failing fix PR can't merge.
+  When it fails, Factory's CI Steward reads the logs and commits a fix to
+  the PR (`.github/workflows/ci-steward.yml`, policy in
+  `.github/droid-ci.yml`). PR #3 is the worked example: a Pillow 12 bump
+  broke thumbnails (`Image.ANTIALIAS` was removed), the check went red,
+  and Droid committed the one-line `Image.Resampling.LANCZOS` fix, after
+  which the check went green. Tests, pins, and workflows are protected
+  paths, so the fix has to be in the app code.
 - 20 findings need no code change, each with a documented reason and
   a revisit trigger ("revisit the day an egress proxy is adopted")
 - Priya's Monday for this service: **5.6 h → ~32 min** (assumption is a

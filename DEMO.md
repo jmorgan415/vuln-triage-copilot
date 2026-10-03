@@ -145,6 +145,47 @@ Point at the metrics strip: "The 6-minutes-per-finding baseline is a
 declared constant in the pipeline — it's an assumption you can argue
 with, not a number we invented in a deck."
 
+## Beat 5b — When a fix breaks (3 min; take it from Beat 4)
+
+Open PR #3 ("bump Pillow 9.0.0 -> 12.3.0") and walk its history top to
+bottom. Don't trigger anything live; the history is the demo.
+
+1. **The bump.** "This is the PR a dependency bot opens: one version
+   line. It closes the reachable libwebp overflow plus 20 other Pillow
+   findings."
+2. **The red check.** Open the first failed Verify Fixes run. "Four
+   thumbnail tests fail: `module 'PIL.Image' has no attribute
+   'ANTIALIAS'`. Pillow 10 removed it, and our avatar code still used
+   it. Merging this would have fixed a CVE and broken every avatar
+   upload." Point at the merge box: blocked, because `verify` is a
+   required check, even for admins.
+3. **Droid's comment.** "CI Steward ran automatically on the failure,
+   read the job log, and named the exact line and the fix. The Droid
+   review on the PR said the same thing independently."
+4. **Droid's commit.** Open `fix(ci): use Pillow 12 resampling enum for
+   thumbnails` by factory-droid[bot]. One line: `Image.ANTIALIAS` ->
+   `Image.Resampling.LANCZOS`. "It fixed the app, not the test."
+5. **Green.** The rerun: 5/5 tests, 56 -> 35 findings, 0 introduced,
+   gate passed. Merge button unlocked; a human still clicks it.
+
+The guardrails, if asked (all in `.github/droid-ci.yml`, read from
+main only, so a PR can't loosen them):
+
+- Tests, dependency pins, workflows, and pipeline code are protected
+  paths. Edits to them are reverted after the run, so Droid can't make
+  the check green by deleting a test or undoing the upgrade.
+- It only fixes failures the PR caused: Verify Fixes must be green on
+  the PR's base commit, or it diagnoses and stops.
+- At most 2 consecutive fix commits and 6 runs per PR, then a human.
+- On this public repo, GitHub held Droid's push for maintainer approval
+  before CI ran it: one more human checkpoint.
+
+Honest build notes, if asked: getting here took two config fixes, both
+caught by Steward's own guardrails. It first stayed diagnosis-only
+because Verify Fixes had never run on main (no baseline), then it fixed
+the code but couldn't commit because the runner had no git identity.
+Both fixes landed as PRs #4 and #5.
+
 ## Beat 6 — The Factory story (5 min)
 
 "The whole thing was built in one Droid session, comfortably inside the
@@ -165,10 +206,11 @@ thread pool. This is exactly the kind of fan-out Factory is built for,
 and exactly the loop you'd schedule as a Factory automation: Monday
 6am, every service, before Priya's coffee. Same pattern, org-wide.
 
-And the natural next beat closes the loop with Factory's GitHub
-integration: the four remediation PRs get opened from the patch hints
-and Droid reviews them on the PR — triage and remediation as one
-agent-driven pipeline."
+And the loop is closed on GitHub: the remediation PRs carry tests, a
+required Verify Fixes check proves them, Droid reviews them, and when an
+upgrade breaks the app, CI Steward repairs the PR itself (PR #3).
+Triage, remediation, verification, and repair as one agent-driven
+pipeline, with a human on the merge button."
 
 ## Beat 7 — Value and next steps (3 min)
 
