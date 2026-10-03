@@ -14,12 +14,18 @@ on:
 
 jobs:
   droid:
+    # Public repo: only the owner and collaborators may start a Droid run
+    # (the action re-checks write access before using the Factory key).
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@droid')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid'))) ||
-      (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')))
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@droid')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@droid')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid'))) ||
+        (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')))
+      ) && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+        github.event.comment.author_association || github.event.review.author_association ||
+        github.event.issue.author_association || github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     permissions:
       contents: read
