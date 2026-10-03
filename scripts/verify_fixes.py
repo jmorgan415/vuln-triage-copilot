@@ -43,6 +43,7 @@ print(json.dumps({
     "errors": len(result.errors),
     "skipped": len(result.skipped),
     "failed_tests": [t.id() for t, _ in result.failures + result.errors],
+    "error_lines": sorted({tb.strip().splitlines()[-1] for _, tb in result.failures + result.errors}),
     "log_tail": stream.getvalue()[-2000:],
 }))
 """
@@ -151,7 +152,11 @@ def main() -> int:
                 res = json.loads(proc.stdout.strip().splitlines()[-1])
             except (IndexError, json.JSONDecodeError):
                 res = {"ran": 0, "failures": 0, "errors": 1, "skipped": 0,
-                       "failed_tests": [tf.name], "log_tail": proc.stderr[-2000:]}
+                       "failed_tests": [tf.name], "error_lines": [],
+                       "log_tail": proc.stderr[-2000:]}
+            # Reports get committed; keep throwaway checkout paths out of them.
+            for prefix in {str(app_dir), str(app_dir.resolve())}:
+                res["log_tail"] = res["log_tail"].replace(prefix + "/", "")
             res["passed"] = res["ran"] - res["failures"] - res["errors"] - res["skipped"]
             res["ok"] = res["ran"] > 0 and not res["failures"] and not res["errors"]
             tests[tf.name] = res
@@ -208,7 +213,7 @@ def main() -> int:
 
     reasons = []
     failing = [t for t, r in tests.items() if not r["ok"]]
-    if not tests:
+    if fixes and not tests:
         reasons.append("no tests found in the fix branch")
     if failing:
         reasons.append(f"failing test modules: {', '.join(failing)}")

@@ -97,7 +97,9 @@ Headline numbers (all computed by the pipeline, not hand-waved):
   broke thumbnails (`Image.ANTIALIAS` was removed), the check went red,
   and Droid committed the one-line `Image.Resampling.LANCZOS` fix, after
   which the check went green. Tests, pins, and workflows are protected
-  paths, so the fix has to be in the app code.
+  paths, so the fix has to be in the app code. The dashboard's "Fix PR
+  history" panel shows both commits side by side (`make history PR=3`
+  re-verifies each one and writes `data/pr_history.json`).
 - 20 findings need no code change, each with a documented reason and
   a revisit trigger ("revisit the day an egress proxy is adopted")
 - Priya's Monday for this service: **5.6 h → ~32 min** (assumption is a
