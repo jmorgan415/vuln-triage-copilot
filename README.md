@@ -20,8 +20,9 @@ A customer-facing MVP built with **Factory** (Droid, in a single session).
 > patch hint. Priya reviews 5 cards instead of 56 alerts.
 >
 > **Result on the demo fixture:** 56 findings → 5 act-now · 6 monitor ·
-> 45 dismissed with evidence. Four small PRs close 36 of them; the other
-> 20 need no code change, each carrying its reason and revisit trigger.
+> 45 dismissed with evidence. Four fixes in one PR close 36 of them; the
+> other 20 need no code change, each carrying its reason and revisit
+> trigger.
 
 ## Architecture
 
@@ -82,7 +83,7 @@ with `REACH_AGENT_CMD='droid exec --cwd /abs/path/to/app'` if needed.
 Headline numbers (all computed by the pipeline, not hand-waved):
 
 - 56 findings → 5 act-now cards worth a human's attention
-- 4 remediation PRs close 36 findings (3 bumps + 1 pin deletion)
+- 4 fixes in one PR close 36 findings (3 version bumps + 1 dead-pin deletion)
 - Every fix is verified before a human reviews it (`make verify`, and the
   `Verify Fixes` workflow on every fix PR): the pinned requirements install
   into a fresh venv on the service's Python (3.11), each changed package's
@@ -152,13 +153,16 @@ per-finding reachability analysis, all code, validation logic.
 - The live backend was smoke-tested on one finding; a full 56-finding
   live run costs 56 Droid sessions (minutes, not hours — and it's the
   natural home for a scheduled Factory automation).
+- The remediation PRs are deliberately left unmerged. `main` is the
+  vulnerable baseline the walkthrough starts from, and PR #3 (the broken
+  Pillow bump) only has a red check while it is open.
 
 ## What's next
 
 - Scheduled triage (Monday 6am) via a Factory automation, posting a
   Slack/Jira digest per team.
-- Auto-open the four remediation PRs from the patch hints, with Droid
-  review on the PR (closing the loop this MVP started).
+- Auto-open remediation PRs from the patch hints, with Droid review on
+  the PR (closing the loop this MVP started).
 - Incremental re-triage: key verdicts by call-site hash so only changed
   code paths re-run.
 - Org-wide rollup: which findings repeat across services → golden
