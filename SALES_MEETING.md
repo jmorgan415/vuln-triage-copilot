@@ -372,7 +372,7 @@ is how objections become discovery, which is one of the scored criteria.
 
 **9. "Won't this bury my developers in PRs?" (Priya or Ravi)**
 - Explore: "How many PRs a week can a team absorb before ignoring them?"
-- Respond: grouping is the point. Four PRs closed 36 findings in the demo. The pilot can cap PRs per repo per week.
+- Respond: grouping is the point. Four fixes in one PR closed 36 findings in the demo. The pilot can cap PRs per repo per week.
 
 **When you don't know:** "I don't want to guess on that. I'll confirm and send it in writing today." Write it down visibly. Then use it as a next step.
 

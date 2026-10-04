@@ -21,6 +21,18 @@ make triage-live   # or: python3 triage/run_triage.py --backend droid --only CVE
 session and say "this is a fresh Droid session re-deriving the verdict
 from scratch.")
 
+Then confirm the baseline is intact. `main` must still be the vulnerable
+starting point, and PR #1 (the remediation) and PR #3 (the broken Pillow
+bump) must stay **open and unmerged**, or the before/after story loses its
+red side:
+
+```bash
+git fetch -q origin main
+git show origin/main:sample-app/requirements.txt | grep -E "Pillow|PyYAML|sqlparse|Jinja2"
+git show origin/main:sample-app/app/image_thumbs.py | grep ANTIALIAS
+gh pr list --state open          # expect #1 and #3, both open
+```
+
 ## Beat 1 — Persona and pain (3 min)
 
 "I'm demoing for Priya, a security engineer at Northgate Financial —
@@ -113,7 +125,7 @@ The recommendation isn't 'upgrade,' it's 'delete the pin,' which
 permanently removes 5 findings from every future scan. Scanners don't
 tell you that. Agents reading the code do."
 
-**The punchline.** "Four PRs — three version bumps and one pin
+**The punchline.** "Four fixes in one PR — three version bumps and one pin
 deletion — close 36 of 56 findings. The remaining 20 need no code
 change, and each carries its reason. Priya's Monday on this service:
 5.6 hours to about 32 minutes."
