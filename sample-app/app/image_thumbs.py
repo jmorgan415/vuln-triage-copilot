@@ -12,7 +12,7 @@ def make_thumbnail(image_bytes: bytes, out_format: str = "PNG") -> bytes:
     """Produce a square thumbnail from a customer-uploaded avatar."""
     with Image.open(io.BytesIO(image_bytes)) as img:
         img = img.convert("RGBA")
-        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)
+        img.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         img.save(buf, format=out_format)
         return buf.getvalue()
