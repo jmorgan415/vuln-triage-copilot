@@ -1,16 +1,23 @@
 [
   {
-    "pr": 3,
-    "title": "fix(sample-app): bump Pillow 9.0.0 -> 12.3.0 (CVE-2023-4863 + 20 more)",
-    "url": "https://github.com/jmorgan415/vuln-triage-copilot/pull/3",
+    "pr": 9,
+    "title": "fix(sample-app): remediate Reach act-now findings (56 -> 20)",
+    "url": "https://github.com/jmorgan415/vuln-triage-copilot/pull/9",
     "steps": [
       {
-        "commit": "fa441ea",
-        "headline": "fix(sample-app): bump Pillow 9.0.0 -> 12.3.0 (CVE-2023-4863 + 20 more)",
+        "commit": "7606ea8",
+        "headline": "fix(sample-app): remediate Reach act-now findings (56 -> 20)",
         "author": "jmorgan415",
-        "app_diff": [],
+        "app_diff": [
+          "-    # FullLoader keeps support for the custom !!merge tags the console emits",
+          "-    # (safe_load rejects them). Added 2021-06, see TKT-1421.",
+          "-    return yaml.load(raw.decode(\"utf-8\"), Loader=yaml.FullLoader)",
+          "+    # SafeLoader resolves the console's `!!merge <<:` keys natively (TKT-1421);",
+          "+    # FullLoader was never needed and permits python/* constructor tags.",
+          "+    return yaml.safe_load(raw.decode(\"utf-8\"))"
+        ],
         "ci": {
-          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37094932249",
+          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37218760419",
           "conclusion": "failure"
         },
         "gate": {
@@ -21,36 +28,60 @@
         },
         "python": "3.11.14",
         "tests": {
-          "ran": 5,
-          "passed": 1,
+          "ran": 13,
+          "passed": 9,
           "errors": [
             "AttributeError: module 'PIL.Image' has no attribute 'ANTIALIAS'"
           ]
         },
         "rescan": {
           "before": 56,
-          "after": 35,
+          "after": 20,
           "introduced": []
         },
         "fixes": [
+          {
+            "package": "Jinja2",
+            "from": "2.11.2",
+            "to": null,
+            "status": "verified"
+          },
+          {
+            "package": "MarkupSafe",
+            "from": "1.1.1",
+            "to": null,
+            "status": "verified"
+          },
           {
             "package": "Pillow",
             "from": "9.0.0",
             "to": "12.3.0",
             "status": "tests_failed"
+          },
+          {
+            "package": "PyYAML",
+            "from": "5.3.1",
+            "to": "6.0.3",
+            "status": "verified"
+          },
+          {
+            "package": "sqlparse",
+            "from": "0.4.1",
+            "to": "0.6.0",
+            "status": "verified"
           }
         ]
       },
       {
-        "commit": "2a7e52a",
-        "headline": "fix(ci): use Pillow 12 resampling enum for thumbnails",
+        "commit": "f4bc2d5",
+        "headline": "fix(ci): use supported Pillow thumbnail resampling",
         "author": "factory-droid[bot]",
         "app_diff": [
           "-        img.thumbnail(THUMB_SIZE, Image.ANTIALIAS)",
           "+        img.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)"
         ],
         "ci": {
-          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37096034884",
+          "url": "https://github.com/jmorgan415/vuln-triage-copilot/actions/runs/37219080183",
           "conclusion": "success"
         },
         "gate": {
@@ -59,20 +90,44 @@
         },
         "python": "3.11.14",
         "tests": {
-          "ran": 5,
-          "passed": 5,
+          "ran": 13,
+          "passed": 13,
           "errors": []
         },
         "rescan": {
           "before": 56,
-          "after": 35,
+          "after": 20,
           "introduced": []
         },
         "fixes": [
           {
+            "package": "Jinja2",
+            "from": "2.11.2",
+            "to": null,
+            "status": "verified"
+          },
+          {
+            "package": "MarkupSafe",
+            "from": "1.1.1",
+            "to": null,
+            "status": "verified"
+          },
+          {
             "package": "Pillow",
             "from": "9.0.0",
             "to": "12.3.0",
+            "status": "verified"
+          },
+          {
+            "package": "PyYAML",
+            "from": "5.3.1",
+            "to": "6.0.3",
+            "status": "verified"
+          },
+          {
+            "package": "sqlparse",
+            "from": "0.4.1",
+            "to": "0.6.0",
             "status": "verified"
           }
         ]

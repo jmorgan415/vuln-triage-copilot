@@ -47,6 +47,8 @@ def main() -> int:
     ap.add_argument("--base", default="main", help="ref with the original pins "
                     "(falls back to origin/main when there is no local branch)")
     ap.add_argument("--out", type=Path, default=REPO / "data" / "pr_history.json")
+    ap.add_argument("--append", action="store_true",
+                    help="keep entries for other PRs (default: the file holds this PR only)")
     args = ap.parse_args()
 
     pr = json.loads(sh("gh", "pr", "view", str(args.pr), "--json",
@@ -95,9 +97,14 @@ def main() -> int:
         print(f"[history]   gate {'passed' if v['gate']['passed'] else 'FAILED'}")
 
     entry = {"pr": pr["number"], "title": pr["title"], "url": pr["url"], "steps": steps}
-    history = json.loads(args.out.read_text()) if args.out.exists() else []
-    history = [h for h in history if h["pr"] != entry["pr"]] + [entry]
-    history.sort(key=lambda h: h["pr"])
+    if args.append:
+        history = json.loads(args.out.read_text()) if args.out.exists() else []
+        history = [h for h in history if h["pr"] != entry["pr"]] + [entry]
+        history.sort(key=lambda h: h["pr"])
+    else:
+        # The dashboard renders one panel per entry, so a regeneration for the
+        # demo PR replaces the file rather than leaving stale PRs on the board.
+        history = [entry]
     args.out.write_text(json.dumps(history, indent=2) + "\n")
     print(f"[history] wrote {len(steps)} step(s) for PR #{entry['pr']} to "
           f"{args.out.relative_to(REPO) if args.out.is_relative_to(REPO) else args.out}")

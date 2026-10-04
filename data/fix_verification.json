@@ -1,10 +1,10 @@
 {
   "meta": {
-    "ref": "fix/reach-act-now-remediation",
+    "ref": "fix/reach-remediation",
     "base": "main",
-    "commit": "b51fc55",
+    "commit": "f4bc2d5",
     "python": "3.11.14",
-    "generated_at": "2026-10-02T21:48:22+00:00"
+    "generated_at": "2026-10-04T17:08:46+00:00"
   },
   "gate": {
     "passed": true,
@@ -21,7 +21,8 @@
         "errors": 0,
         "skipped": 0,
         "failed_tests": [],
-        "log_tail": "test_console_merge_tags_still_resolve (test_config_service.LoadTenantConfigTest.test_console_merge_tags_still_resolve) ... ok\ntest_python_constructor_tags_are_rejected (test_config_service.LoadTenantConfigTest.test_python_constructor_tags_are_rejected) ... ok\ntest_size_cap_enforced (test_config_service.LoadTenantConfigTest.test_size_cap_enforced) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.001s\n\nOK\n",
+        "error_lines": [],
+        "log_tail": "test_console_merge_tags_still_resolve (test_config_service.LoadTenantConfigTest.test_console_merge_tags_still_resolve) ... ok\ntest_python_constructor_tags_are_rejected (test_config_service.LoadTenantConfigTest.test_python_constructor_tags_are_rejected) ... ok\ntest_size_cap_enforced (test_config_service.LoadTenantConfigTest.test_size_cap_enforced) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.002s\n\nOK\n",
         "passed": 3,
         "ok": true
       },
@@ -31,7 +32,8 @@
         "errors": 0,
         "skipped": 0,
         "failed_tests": [],
-        "log_tail": "test_aspect_ratio_preserved (test_image_thumbs.MakeThumbnailTest.test_aspect_ratio_preserved) ... ok\ntest_garbage_bytes_rejected (test_image_thumbs.MakeThumbnailTest.test_garbage_bytes_rejected) ... ok\ntest_jpeg_upload (test_image_thumbs.MakeThumbnailTest.test_jpeg_upload) ... ok\ntest_png_upload (test_image_thumbs.MakeThumbnailTest.test_png_upload) ... ok\ntest_webp_upload (test_image_thumbs.MakeThumbnailTest.test_webp_upload) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 1.092s\n\nOK\n",
+        "error_lines": [],
+        "log_tail": "test_aspect_ratio_preserved (test_image_thumbs.MakeThumbnailTest.test_aspect_ratio_preserved) ... ok\ntest_garbage_bytes_rejected (test_image_thumbs.MakeThumbnailTest.test_garbage_bytes_rejected) ... ok\ntest_jpeg_upload (test_image_thumbs.MakeThumbnailTest.test_jpeg_upload) ... ok\ntest_png_upload (test_image_thumbs.MakeThumbnailTest.test_png_upload) ... ok\ntest_webp_upload (test_image_thumbs.MakeThumbnailTest.test_webp_upload) ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 0.866s\n\nOK\n",
         "passed": 5,
         "ok": true
       },
@@ -41,7 +43,8 @@
         "errors": 0,
         "skipped": 0,
         "failed_tests": [],
-        "log_tail": "test_every_app_module_imports_without_removed_packages (test_imports.AppImportsTest.test_every_app_module_imports_without_removed_packages) ... ok\ntest_worker_handles_offline_job_kinds (test_imports.AppImportsTest.test_worker_handles_offline_job_kinds) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.402s\n\nOK\n",
+        "error_lines": [],
+        "log_tail": "test_every_app_module_imports_without_removed_packages (test_imports.AppImportsTest.test_every_app_module_imports_without_removed_packages) ... ok\ntest_worker_handles_offline_job_kinds (test_imports.AppImportsTest.test_worker_handles_offline_job_kinds) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.491s\n\nOK\n",
         "passed": 2,
         "ok": true
       },
@@ -51,6 +54,7 @@
         "errors": 0,
         "skipped": 0,
         "failed_tests": [],
+        "error_lines": [],
         "log_tail": "test_deeply_nested_input_fails_cleanly (test_query_log.NormalizeQueryTest.test_deeply_nested_input_fails_cleanly) ... ok\ntest_keywords_uppercased_and_comments_stripped (test_query_log.NormalizeQueryTest.test_keywords_uppercased_and_comments_stripped) ... ok\ntest_support_console_snippet_is_normalized (test_query_log.NormalizeQueryTest.test_support_console_snippet_is_normalized) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.071s\n\nOK\n",
         "passed": 3,
         "ok": true

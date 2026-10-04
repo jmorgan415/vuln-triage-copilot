@@ -29,7 +29,7 @@ verify:
 	python3 scripts/verify_fixes.py
 
 # Re-verify each commit of a fix PR (red bump -> Droid repair) for the
-# dashboard's "Fix PR history" panel. Usage: make history PR=3
+# dashboard's "Fix PR history" panel. Usage: make history PR=9
 history:
 	python3 scripts/pr_history.py --pr $(PR)
 

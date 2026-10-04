@@ -22,15 +22,15 @@ session and say "this is a fresh Droid session re-deriving the verdict
 from scratch.")
 
 Then confirm the baseline is intact. `main` must still be the vulnerable
-starting point, and PR #1 (the remediation) and PR #3 (the broken Pillow
-bump) must stay **open and unmerged**, or the before/after story loses its
-red side:
+starting point, and PR #9 (the remediation, with Droid's repair commit on
+top of it) must stay **open and unmerged**, or the before/after story
+loses its red side:
 
 ```bash
 git fetch -q origin main
 git show origin/main:sample-app/requirements.txt | grep -E "Pillow|PyYAML|sqlparse|Jinja2"
 git show origin/main:sample-app/app/image_thumbs.py | grep ANTIALIAS
-gh pr list --state open          # expect #1 and #3, both open
+gh pr list --state open          # expect #9, still open
 ```
 
 ## Beat 1 — Persona and pain (3 min)
@@ -159,27 +159,38 @@ with, not a number we invented in a deck."
 
 ## Beat 5b — When a fix breaks (3 min; take it from Beat 4)
 
-Start on the dashboard's "Fix PR history" panel (red bump -> Droid fix ->
-green), then open PR #3 ("bump Pillow 9.0.0 -> 12.3.0") and walk its history top to
-bottom. Don't trigger anything live; the history is the demo.
+Start on the dashboard's "Fix PR history" panel (red commit -> Droid fix ->
+green), then open PR #9 ("remediate Reach act-now findings") and walk its
+commit history top to bottom. It has two commits, and that's the story.
+Don't trigger anything live; the history is the demo.
 
-1. **The bump.** "This is the PR a dependency bot opens: one version
-   line. It closes the reachable libwebp overflow plus 20 other Pillow
-   findings."
-2. **The red check.** Open the first failed Verify Fixes run. "Four
-   thumbnail tests fail: `module 'PIL.Image' has no attribute
-   'ANTIALIAS'`. Pillow 10 removed it, and our avatar code still used
-   it. Merging this would have fixed a CVE and broken every avatar
-   upload." Point at the merge box: blocked, because `verify` is a
-   required check, even for admins.
-3. **Droid's comment.** "CI Steward ran automatically on the failure,
-   read the job log, and named the exact line and the fix. The Droid
-   review on the PR said the same thing independently."
-4. **Droid's commit.** Open `fix(ci): use Pillow 12 resampling enum for
-   thumbnails` by factory-droid[bot]. One line: `Image.ANTIALIAS` ->
+1. **The remediation.** Commit 1 is the whole fix for this service: the
+   pins move (PyYAML 5.3.1 -> 6.0.3 with the `safe_load` migration,
+   sqlparse 0.4.1 -> 0.6.0, Pillow 9.0.0 -> 12.3.0), the dead
+   Jinja2/MarkupSafe pins are deleted, and the tests for each changed
+   package ship with it. This one PR closes 36 of the 56 findings.
+2. **The red check.** Open the failed Verify Fixes run. "Four of the five
+   packages verify clean in the same run. Pillow doesn't:
+   `test_image_thumbs.py: 1/5 passed`, `Pillow: tests_failed`. Pillow 10
+   removed `Image.ANTIALIAS`, and this commit bumps Pillow without renaming
+   that call, so merging it would have fixed a CVE and broken every avatar
+   upload." Point at the merge box: blocked, because `verify` is a required
+   check, even for admins.
+3. **Droid's comment.** "CI Steward ran automatically on the failure, read
+   the job log, and named the exact line and the fix. The Droid review on
+   the PR said the same thing independently."
+4. **Droid's commit.** Open `fix(ci): use supported Pillow thumbnail
+   resampling` by factory-droid[bot]. One line: `Image.ANTIALIAS` ->
    `Image.Resampling.LANCZOS`. "It fixed the app, not the test."
-5. **Green.** The rerun: 5/5 tests, 56 -> 35 findings, 0 introduced,
-   gate passed. Merge button unlocked; a human still clicks it.
+5. **Green.** The rerun: 13/13 tests, 56 -> 20 findings, 0 introduced, all
+   five packages verified, gate passed. Merge button unlocked; a human
+   still clicks it.
+
+"One thing is staged here, and I'll say it before you ask: the missing
+rename in commit 1 is deliberate, because the fixture needs a real failure
+to demonstrate the loop. Everything else is real: the tests, the failure on
+the real Pillow wheel, the required check, the Steward's repair commit, and
+the green rerun."
 
 The guardrails, if asked (all in `.github/droid-ci.yml`, read from
 main only, so a PR can't loosen them):
@@ -221,7 +232,7 @@ and exactly the loop you'd schedule as a Factory automation: Monday
 
 And the loop is closed on GitHub: the remediation PRs carry tests, a
 required Verify Fixes check proves them, Droid reviews them, and when an
-upgrade breaks the app, CI Steward repairs the PR itself (PR #3).
+upgrade breaks the app, CI Steward repairs the PR itself (PR #9).
 Triage, remediation, verification, and repair as one agent-driven
 pipeline, with a human on the merge button."
 

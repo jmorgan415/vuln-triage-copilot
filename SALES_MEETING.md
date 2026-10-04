@@ -94,7 +94,7 @@ Marcus+Priya.
 | 0:00-0:04 | Open | Intros, recap, agenda, time check, confirm the outcome they want | Slide 1 |
 | 0:04-0:14 | Discovery | Get numbers and pain from each person and earn the demo | Questions in §5 |
 | 0:14-0:19 | Pitch | Frame the problem and the approach in their words | Slides 2-3 |
-| 0:19-0:33 | Demo | Raw queue to triaged board to evidence to fix PR to Droid review | Dashboard + PR #1 |
+| 0:19-0:33 | Demo | Raw queue to triaged board to evidence to fix PR to Droid review and repair | Dashboard + PR #9 |
 | 0:33-0:38 | Value | Rebuild the business case live with *their* discovery numbers | Slide 4 |
 | 0:38-0:46 | Pilot | Scope, metrics, decision criteria, mutual plan | Slide 5 |
 | 0:46-0:50 | Buffer | Absorb objections that came up earlier. Never skip the pilot for them | |
@@ -207,9 +207,11 @@ about. Name the person each beat is for.
    that can't cite real code can't ship." Then tell the story: **the
    live agent disagreed with my own verdict and was right.**
    `data/live_smoke_run1.json` has the receipts.
-5. **For Priya and Ravi, from decision to fix (3 min).** Open PR #1:
+5. **For Priya and Ravi, from decision to fix (3 min).** Open PR #9:
    four changes close 36 of 56 findings, with tests. Show **Droid's
-   code and security review** on the PR. Optional live moment: comment
+   code and security review** on the PR, then its two commits (the
+   remediation, then Droid's repair of the Pillow rename the required
+   check caught). Optional live moment: comment
    `@droid why is safe_load sufficient here, given the !!merge keys?`
    (post it in the first minutes of the demo so the reply has time to
    arrive).
@@ -391,8 +393,8 @@ is how objections become discovery, which is one of the scored criteria.
 - [ ] Send role cards (§2) to the panel 24-48 h ahead
 - [ ] Verify the Factory facts flagged in §10 (pricing, certifications, data handling, deployment options)
 - [ ] `make validate` and `make triage` pass; `make serve` running; dashboard open in a tab
-- [ ] PR #1 open in a tab, with Droid's review visible
-- [ ] Optional: post the `@droid` question on PR #1 near the start of the demo
+- [ ] PR #9 open in a tab, with Droid's review and repair commit visible
+- [ ] Optional: post the `@droid` question on PR #9 near the start of the demo
 - [ ] Screenshots in `docs-screens/` as a fallback
 - [ ] A notepad grid: one column per persona for their "clear win" and their numbers
 - [ ] Rehearse the opening and the pilot close out loud and time both
