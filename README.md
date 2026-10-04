@@ -94,12 +94,16 @@ Headline numbers (all computed by the pipeline, not hand-waved):
 - `verify` is a required check on `main`, so a failing fix PR can't merge.
   When it fails, Factory's CI Steward reads the logs and commits a fix to
   the PR (`.github/workflows/ci-steward.yml`, policy in
-  `.github/droid-ci.yml`). PR #3 is the worked example: a Pillow 12 bump
-  broke thumbnails (`Image.ANTIALIAS` was removed), the check went red,
-  and Droid committed the one-line `Image.Resampling.LANCZOS` fix, after
-  which the check went green. Tests, pins, and workflows are protected
-  paths, so the fix has to be in the app code. The dashboard's "Fix PR
-  history" panel shows both commits side by side (`make history PR=3`
+  `.github/droid-ci.yml`). PR #9 is the worked example, and it carries the
+  whole remediation for this service: the first commit moves the pins
+  (PyYAML, sqlparse, Pillow) and migrates the YAML loader, but bumps Pillow
+  without renaming `Image.ANTIALIAS`, which Pillow 10 removed. The required
+  check goes red (`Pillow: tests_failed`, `test_image_thumbs.py: 1/5 passed`)
+  while the other four packages verify clean, and Droid commits the one-line
+  `Image.Resampling.LANCZOS` repair, after which all 13 tests pass and the
+  gate is green (56 → 20, 0 introduced). Tests, pins, and workflows are
+  protected paths, so the repair has to be in the app code. The dashboard's
+  "Fix PR history" panel shows both commits side by side (`make history PR=9`
   re-verifies each one and writes `data/pr_history.json`).
 - 20 findings need no code change, each with a documented reason and
   a revisit trigger ("revisit the day an egress proxy is adopted")
@@ -154,8 +158,8 @@ per-finding reachability analysis, all code, validation logic.
   live run costs 56 Droid sessions (minutes, not hours — and it's the
   natural home for a scheduled Factory automation).
 - The remediation PRs are deliberately left unmerged. `main` is the
-  vulnerable baseline the walkthrough starts from, and PR #3 (the broken
-  Pillow bump) only has a red check while it is open.
+  vulnerable baseline the walkthrough starts from, and PR #9 only shows the
+  red-to-green repair history while it is open.
 
 ## What's next
 

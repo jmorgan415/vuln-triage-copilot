@@ -25,11 +25,12 @@ validate:
 
 # Prove the fix branch is safe: clean pinned install, per-fix tests,
 # Trivy rescan. Writes data/fix_verification.json for the dashboard.
+# Defaults to fix/reach-remediation (PR #9); override with REF=...
 verify:
-	python3 scripts/verify_fixes.py
+	python3 scripts/verify_fixes.py $(if $(REF),--ref $(REF))
 
 # Re-verify each commit of a fix PR (red bump -> Droid repair) for the
-# dashboard's "Fix PR history" panel. Usage: make history PR=3
+# dashboard's "Fix PR history" panel. Usage: make history PR=9
 history:
 	python3 scripts/pr_history.py --pr $(PR)
 
