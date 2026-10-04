@@ -26,7 +26,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 APP_DIR = "sample-app"
-DEFAULT_REF = "fix/reach-act-now-remediation"
+DEFAULT_REF = "fix/reach-remediation"
 
 # Distribution name -> import name, where they differ.
 IMPORT_NAMES = {"pyyaml": "yaml", "pillow": "PIL"}
