@@ -27,8 +27,9 @@ bump) must stay **open and unmerged**, or the before/after story loses its
 red side:
 
 ```bash
-git show main:sample-app/requirements.txt | grep -E "Pillow|PyYAML|sqlparse|Jinja2"
-git show main:sample-app/app/image_thumbs.py | grep ANTIALIAS
+git fetch -q origin main
+git show origin/main:sample-app/requirements.txt | grep -E "Pillow|PyYAML|sqlparse|Jinja2"
+git show origin/main:sample-app/app/image_thumbs.py | grep ANTIALIAS
 gh pr list --state open          # expect #1 and #3, both open
 ```
 
